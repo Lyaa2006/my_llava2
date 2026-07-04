@@ -1,0 +1,20 @@
+{
+  "gpu_num": 4,
+  "rank": 96,
+  "expert_num": 6,
+  "output_dir": "/mnt/lyaa/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDeRA/Task1_llava_lora",
+  "epoch": 1,
+  "batch_size": 16,
+  "grad_acc": 1,
+  "lr": 0.0002,
+  "cur_task": 0,
+  "routing_image_weight": 0.5,
+  "routing_text_weight": 0.5,
+  "routing_history_weight": 0.15,
+  "routing_temperature": 0.1,
+  "routing_top_k": 2,
+  "routing_min_similarity": -1.0,
+  "routing_prior_momentum": 0.8,
+  "routing_aux_weight": 0.02,
+  "selective_transfer_weight": 0.1
+}

@@ -1,0 +1,12 @@
+{
+  "gpu_num": 1,
+  "rank": 96,
+  "expert_num": 6,
+  "previous_model": "/mnt/lyaa/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDeCL/Task3_llava_lora",
+  "output_dir": "/mnt/lyaa/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDeCL/Task4_llava_lora",
+  "epoch": 1,
+  "batch_size": 16,
+  "grad_acc": 2,
+  "lr": 2e-4,
+  "cur_task": 3
+}

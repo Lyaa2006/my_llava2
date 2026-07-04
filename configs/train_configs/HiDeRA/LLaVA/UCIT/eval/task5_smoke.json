@@ -1,0 +1,8 @@
+{
+  "gpu_num": 4,
+  "stage": "HiDe-task5-smoke",
+  "model_path": "/mnt/lyaa/MCITlib/checkpoints/UCIT/LLaVA/HiDeRA/smoke/Task5_llava_lora",
+  "result_path": "./results/UCIT/each_dataset",
+  "text_tower": "/mnt/lyaa/my_llava/clip-vit-large-patch14-336",
+  "num_task": 6
+}

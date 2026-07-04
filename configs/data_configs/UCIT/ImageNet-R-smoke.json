@@ -1,0 +1,6 @@
+{
+  "train_path": "/mnt/lyaa/my_llava/UCIT/ImageNet-R/train_smoke.json",
+  "test_path": "/mnt/lyaa/my_llava/UCIT/ImageNet-R/test_smoke.json",
+  "train_folder": "/mnt/lyaa/my_llava/UCIT/datasets",
+  "test_folder": "/mnt/lyaa/my_llava/UCIT/datasets"
+}
