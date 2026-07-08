@@ -10,6 +10,18 @@ MODEL_CONFIG=$1
 DATA_CONFIG=$2
 TRAIN_CONFIG=$3
 
+if [ -n "${LOG_FILE:-}" ] && [ "${LOG_TEE_ACTIVE:-0}" != "1" ]; then
+    mkdir -p "$(dirname "$LOG_FILE")"
+    export LOG_TEE_ACTIVE=1
+    exec > >(tee -a "$LOG_FILE") 2>&1
+    echo "Logging to: $LOG_FILE"
+fi
+
+export NCCL_IB_DISABLE="${NCCL_IB_DISABLE:-1}"
+export NCCL_P2P_DISABLE="${NCCL_P2P_DISABLE:-1}"
+echo "NCCL_IB_DISABLE=$NCCL_IB_DISABLE"
+echo "NCCL_P2P_DISABLE=$NCCL_P2P_DISABLE"
+
 read_config() {
     python3 -c "import json; print(json.load(open('$1'))['$2'])"
 }
@@ -124,14 +136,24 @@ if [ -d "$DESCRIPTION_CACHE_DIR" ]; then
 fi
 
 if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
-    GPU_LIST="$CUDA_VISIBLE_DEVICES"
+    VISIBLE_GPU_LIST=$(python3 -c "print(','.join([x.strip() for x in '${CUDA_VISIBLE_DEVICES}'.split(',') if x.strip()]))")
     GPU_NUM=$(python3 -c "print(len([x for x in '${CUDA_VISIBLE_DEVICES}'.split(',') if x.strip()]))")
+    GPU_LIST=""
+    for i in $(seq 0 $((GPU_NUM-1))); do
+        GPU_LIST+="$i,"
+    done
+    GPU_LIST=${GPU_LIST%,}
+    echo "Using CUDA_VISIBLE_DEVICES=$VISIBLE_GPU_LIST"
+    echo "Using DeepSpeed local slots=$GPU_LIST on remapped visible devices"
+    DEEPSPEED_GPU_ARGS=(--include "localhost:$GPU_LIST")
 else
     GPU_LIST=""
     for i in $(seq 0 $((GPU_NUM-1))); do
         GPU_LIST+="$i,"
     done
     GPU_LIST=${GPU_LIST%,}
+    echo "Using default local GPU slots=$GPU_LIST"
+    DEEPSPEED_GPU_ARGS=(--include "localhost:$GPU_LIST")
 fi
 
 if [ -z "${MASTER_PORT:-}" ]; then
@@ -157,6 +179,7 @@ if [ "$MAX_STEPS" -gt 0 ]; then
 fi
 
 if [ "$CACHE_READY" != "True" ]; then
+    echo "Rebuilding description cache with $EXPECTED_CACHE_ENTRIES expected entries: $DESCRIPTION_CACHE_DIR"
     rm -rf "$DESCRIPTION_CACHE_DIR"
     python llava/train/train_MOE.py \
         --lora_enable True \
@@ -187,7 +210,7 @@ if [ "$CACHE_READY" != "True" ]; then
         --extract_description_cache_only True
 fi
 
-deepspeed --include localhost:$GPU_LIST --master_port "${MASTER_PORT:-9001}" llava/train/train_mem_MOE.py \
+deepspeed "${DEEPSPEED_GPU_ARGS[@]}" --master_port "${MASTER_PORT:-9001}" llava/train/train_mem_MOE.py \
     --deepspeed ./scripts/zero2.json \
     --lora_enable True --lora_r $RANK --lora_alpha $((RANK * 2)) --mm_projector_lr 2e-5 \
     --expert_num $EXPERT \

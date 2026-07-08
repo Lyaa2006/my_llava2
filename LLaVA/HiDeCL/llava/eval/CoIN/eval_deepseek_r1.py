@@ -35,7 +35,14 @@ def prompt_processor(prompt):
 def eval_single(annotation_file, result_file):
     annotations = json.load(open(annotation_file))
     annotations = {annotation['question_id']: annotation for annotation in annotations}
-    results = [json.loads(line) for line in open(result_file)]
+    with open(result_file) as f:
+        results = [json.loads(line) for line in f if line.strip()]
+
+    if not results:
+        raise ValueError(
+            f"No predictions found in result file: {result_file}. "
+            "The generation stage likely failed before scoring."
+        )
 
     total = len(results)
     right = 0
@@ -56,12 +63,13 @@ def eval_single(annotation_file, result_file):
     with open(ans_gt_file, "w", encoding="utf-8") as f:
         json.dump(answer_gt_file, f, ensure_ascii=False, indent=4)
 
-    print('Samples: {}\nAccuracy: {:.2f}%\n'.format(total, 100. * right / total))
+    accuracy = 100. * right / total
+    print('Samples: {}\nAccuracy: {:.2f}%\n'.format(total, accuracy))
     #将结果写入文件
     if args.output_dir is not None:
         output_file = os.path.join(args.output_dir, 'Result.text')
         with open(output_file, 'w') as f:
-            f.write('Samples: {}\nAccuracy: {:.2f}%\n'.format(total, 100. * right / total))
+            f.write('Samples: {}\nAccuracy: {:.2f}%\n'.format(total, accuracy))
 
     return ans_gt_file
 

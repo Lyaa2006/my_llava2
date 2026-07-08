@@ -33,6 +33,11 @@ def eval_model(args):
     model_path = os.path.expanduser(args.model_path)
     model_name = get_model_name_from_path(model_path)
     tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name, num_task=args.num_task, text_tower=args.text_tower)
+    if image_processor is None:
+        raise RuntimeError(
+            f"Failed to initialize image processor for multimodal checkpoint: {model_path}. "
+            "The vision tower was not loaded correctly."
+        )
 
     with open(os.path.expanduser(args.question_file), "r") as f:
         questions = json.load(f)
@@ -67,8 +72,9 @@ def eval_model(args):
 
         input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).cuda()
 
-        image = Image.open(os.path.join(args.image_folder, image_file))
-        image_tensor = image_processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
+        with Image.open(os.path.join(args.image_folder, image_file)) as image:
+            image = image.convert("RGB")
+            image_tensor = image_processor.preprocess(image, return_tensors='pt')['pixel_values'][0]
 
         stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
         keywords = [stop_str]

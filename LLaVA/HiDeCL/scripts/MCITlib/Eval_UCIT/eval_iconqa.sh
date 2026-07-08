@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 MODEL_CONFIG=$1
 DATA_CONFIG=$2
@@ -31,23 +32,35 @@ IFS=',' read -ra GPULIST <<< "$CUDA_VISIBLE_DEVICES"
 CHUNKS=${#GPULIST[@]}
 
 RESULT_DIR="$RESULT_PATH/$TASK"
+mkdir -p "$RESULT_DIR/$STAGE"
 
+PIDS=()
 for IDX in $(seq 0 $((CHUNKS-1))); do
-    CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python -m llava.eval.CoIN.model_others \
-        --model-path $MODELPATH \
-        --model-base $MODELBASE \
-        --question-file $DATA_PATH \
-        --image-folder $IMAGE \
-        --text-tower $TEXT_TOWER\
-        --num-task $NUM_TASK \
-        --answers-file $RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl \
-        --num-chunks $CHUNKS \
-        --chunk-idx $IDX \
+    CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python3 -m llava.eval.CoIN.model_others \
+        --model-path "$MODELPATH" \
+        --model-base "$MODELBASE" \
+        --question-file "$DATA_PATH" \
+        --image-folder "$IMAGE" \
+        --text-tower "$TEXT_TOWER" \
+        --num-task "$NUM_TASK" \
+        --answers-file "$RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl" \
+        --num-chunks "$CHUNKS" \
+        --chunk-idx "$IDX" \
         --temperature 0 \
         --conv-mode vicuna_v1 &
+    PIDS+=($!)
 done
 
-wait
+FAILED=0
+for PID in "${PIDS[@]}"; do
+    if ! wait "$PID"; then
+        FAILED=1
+    fi
+done
+if [ "$FAILED" -ne 0 ]; then
+    echo "Generation failed for $TASK/$STAGE." >&2
+    exit 1
+fi
 
 output_file=$RESULT_DIR/$STAGE/merge.jsonl
 
@@ -56,13 +69,23 @@ output_file=$RESULT_DIR/$STAGE/merge.jsonl
 
 # Loop through the indices and concatenate each file.
 for IDX in $(seq 0 $((CHUNKS-1))); do
-    cat $RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl >> "$output_file"
+    chunk_file="$RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl"
+    if [ ! -s "$chunk_file" ]; then
+        echo "Missing or empty prediction shard: $chunk_file" >&2
+        exit 1
+    fi
+    cat "$chunk_file" >> "$output_file"
 done
 
-python -m llava.eval.CoIN.eval_deepseek_r1 \
-    --annotation-file $DATA_PATH \
-    --result-file $output_file \
-    --output-dir $RESULT_DIR/$STAGE \
+if [ ! -s "$output_file" ]; then
+    echo "Merged prediction file is empty: $output_file" >&2
+    exit 1
+fi
+
+python3 -m llava.eval.CoIN.eval_deepseek_r1 \
+    --annotation-file "$DATA_PATH" \
+    --result-file "$output_file" \
+    --output-dir "$RESULT_DIR/$STAGE"
 
 # /mnt/cache/guohaiyang/miniconda3/envs/coin/bin/python -m llava.eval.LLaVA.CoIN.create_prompt \
 #     --rule ./ETrain/Eval/LLaVA/CoIN/rule.json \

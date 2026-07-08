@@ -180,7 +180,7 @@ class LlavaMetaForCausalLM(ABC):
         # text_guide_features: bs, 768
         text_guide_features = text_tower(clip_text_inputs)
 
-        if self.training:
+        if self.training and not getattr(self, "disable_anchor_update", False):
             current_image_features = image_guide_features  # [batch_size, feature_dim]
             current_text_features = text_guide_features  # [batch_size, feature_dim]
             task_id = self.cur_task
@@ -391,4 +391,3 @@ class LlavaMetaForCausalLM(ABC):
                     p.requires_grad = False
                 for p in self.get_output_embeddings().parameters():
                     p.requires_grad = False
-

@@ -24,7 +24,47 @@ from llava.constants import DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, D
 
 sys.path.append('/your_path/MCITlib_v3/LLaVA/HiDeRA')
 
-def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, load_4bit=False, device_map="auto", device="cuda", num_task=10, text_tower=None, **kwargs):
+
+def _try_load_local_config(path, trust_remote_code=False):
+    if not path or not (os.path.isdir(path) or os.path.isfile(path)):
+        return None
+    try:
+        return AutoConfig.from_pretrained(
+            path,
+            trust_remote_code=trust_remote_code,
+            local_files_only=True,
+        )
+    except Exception:
+        return None
+
+
+def _is_llava_checkpoint(model_name, model_path=None, model_base=None):
+    if 'llava' in (model_name or '').lower():
+        return True
+
+    for candidate, trust_remote_code in ((model_path, False), (model_base, True)):
+        cfg = _try_load_local_config(candidate, trust_remote_code=trust_remote_code)
+        if cfg is None:
+            continue
+        model_type = str(getattr(cfg, "model_type", "")).lower()
+        architectures = [arch.lower() for arch in (getattr(cfg, "architectures", None) or [])]
+        if 'llava' in model_type or any('llava' in arch for arch in architectures):
+            return True
+
+    return False
+
+
+def _is_lora_checkpoint(model_name, model_path=None):
+    if 'lora' in (model_name or '').lower():
+        return True
+    if not model_path or not os.path.isdir(model_path):
+        return False
+    return any(
+        os.path.exists(os.path.join(model_path, filename))
+        for filename in ('adapter_config.json', 'adapter_model.bin')
+    )
+
+def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, load_4bit=False, device_map="auto", device="cuda", num_task=10, text_tower=None, eval_task_id=None, **kwargs):
     kwargs = {"device_map": device_map, **kwargs}
 
     if device != "cuda":
@@ -43,11 +83,14 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
     else:
         kwargs['torch_dtype'] = torch.float16
 
-    if 'llava' in model_name.lower():
+    is_llava_checkpoint = _is_llava_checkpoint(model_name, model_path=model_path, model_base=model_base)
+    is_lora_checkpoint = _is_lora_checkpoint(model_name, model_path=model_path)
+
+    if is_llava_checkpoint:
         # Load LLaVA model
-        if 'lora' in model_name.lower() and model_base is None:
+        if is_lora_checkpoint and model_base is None:
             warnings.warn('There is `lora` in model name but no `model_base` is provided. If you are loading a LoRA model, please provide the `model_base` argument. Detailed instruction: https://github.com/haotian-liu/LLaVA#launch-a-model-worker-lora-weights-unmerged.')
-        if 'lora' in model_name.lower() and model_base is not None:
+        if is_lora_checkpoint and model_base is not None:
             lora_cfg_pretrained = AutoConfig.from_pretrained(model_path)
             tokenizer = AutoTokenizer.from_pretrained(model_base, use_fast=False)
             print('Loading LLaVA from base model...')
@@ -63,7 +106,7 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
 
             model.set_clip_tokenizer(clip_tokenizer)
             model.set_tokenizer(tokenizer)
-            model.set_eval(num_task)
+            model.set_eval(num_task, eval_task_id=eval_task_id)
 
             token_num, tokem_dim = model.lm_head.out_features, model.lm_head.in_features
             if model.lm_head.weight.shape[0] != token_num:
@@ -71,10 +114,19 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
                 model.model.embed_tokens.weight = torch.nn.Parameter(torch.empty(token_num, tokem_dim, device=model.device, dtype=model.dtype))
 
             print('Loading additional LLaVA weights...')
-            if os.path.exists(os.path.join(model_path, 'non_lora_trainables.bin')):
-                non_lora_trainables = torch.load(os.path.join(model_path, 'non_lora_trainables.bin'), map_location='cpu')
+            local_non_lora_path = os.path.join(model_path, 'non_lora_trainables.bin')
+            if os.path.isdir(model_path):
+                if not os.path.exists(local_non_lora_path):
+                    available_files = sorted(os.listdir(model_path))
+                    raise FileNotFoundError(
+                        f"Expected local checkpoint file '{local_non_lora_path}' was not found. "
+                        f"Directory exists but contains: {available_files}"
+                    )
+                non_lora_trainables = torch.load(local_non_lora_path, map_location='cpu')
+            elif os.path.exists(local_non_lora_path):
+                non_lora_trainables = torch.load(local_non_lora_path, map_location='cpu')
             else:
-                # this is probably from HF Hub
+                # This branch is only for actual HF repo ids, not local paths.
                 from huggingface_hub import hf_hub_download
                 def load_from_hf(repo_id, filename, subfolder=None):
                     cache_file = hf_hub_download(
@@ -96,7 +148,7 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
             print('Merging LoRA weights...')
             model = model.merge_and_unload()
             print('Model is loaded...')
-        elif model_base is not None:
+        elif model_base is not None and os.path.exists(os.path.join(model_path, 'mm_projector.bin')):
             # this may be mm projector only
             print('Loading LLaVA from base model...')
             if 'mpt' in model_name.lower():
@@ -113,6 +165,12 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
             mm_projector_weights = torch.load(os.path.join(model_path, 'mm_projector.bin'), map_location='cpu')
             mm_projector_weights = {k: v.to(torch.float16) for k, v in mm_projector_weights.items()}
             model.load_state_dict(mm_projector_weights, strict=False)
+        elif model_base is not None:
+            available_files = sorted(os.listdir(model_path)) if os.path.isdir(model_path) else []
+            raise FileNotFoundError(
+                f"Unsupported LLaVA checkpoint layout at '{model_path}'. "
+                f"Expected LoRA adapter files or 'mm_projector.bin'. Found: {available_files}"
+            )
         else:
             if 'mpt' in model_name.lower():
                 tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
@@ -144,7 +202,7 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
 
     image_processor = None
 
-    if 'llava' in model_name.lower():
+    if is_llava_checkpoint:
         mm_use_im_start_end = getattr(model.config, "mm_use_im_start_end", False)
         mm_use_im_patch_token = getattr(model.config, "mm_use_im_patch_token", True)
         if mm_use_im_patch_token:

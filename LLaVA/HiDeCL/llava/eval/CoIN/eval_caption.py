@@ -21,10 +21,16 @@ def get_args():
     return parser.parse_args()
 
 def create_coco_type(annotation_file, result_file, output_dir):
-    results = [json.loads(line) for line in open(result_file)]
+    with open(result_file) as f:
+        results = [json.loads(line) for line in f if line.strip()]
 
     pred_list = []
     total = len(results)
+    if total == 0:
+        raise ValueError(
+            f"No predictions found in result file: {result_file}. "
+            "The generation stage likely failed before caption evaluation."
+        )
     right = 0
     coco_results = []
     image_id = 1

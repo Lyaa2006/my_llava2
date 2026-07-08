@@ -170,16 +170,102 @@ class LlavaMetaForCausalLM(ABC):
         temperature = max(float(config["routing_temperature"]), 1e-6)
         return F.softmax(masked_logits / temperature, dim=0)
 
-    def _apply_relation_weights_to_experts(self, compute_expert_weight):
+    def _mask_relation_logits(self, relation_logits):
+        min_similarity = float(self._get_relation_config()["routing_min_similarity"])
+        if min_similarity <= -1.0:
+            return relation_logits
+        masked_relation_logits = torch.where(
+            relation_logits >= min_similarity,
+            relation_logits,
+            torch.full_like(relation_logits, float("-inf")),
+        )
+        if not torch.isfinite(masked_relation_logits).any():
+            return relation_logits
+        return masked_relation_logits
+
+    def _get_task_level_relation_weights(self, active_experts):
+        active_experts = max(1, int(active_experts))
+        cached_weights = getattr(self, "cached_task_fuse_weights", None)
+        cached_task_id = getattr(self, "cached_task_fuse_task_id", None)
+        cached_expert_num = getattr(self, "cached_task_fuse_expert_num", None)
+        task_id = min(max(int(getattr(self, "cur_task", active_experts - 1)), 0), active_experts - 1)
+        if (
+            cached_weights is not None
+            and cached_task_id == task_id
+            and cached_expert_num == active_experts
+        ):
+            return cached_weights
+
+        if active_experts == 1:
+            relation_weights = torch.ones(
+                1,
+                dtype=torch.float32,
+                device=self.image_anchors[0].device,
+            )
+        else:
+            image_anchors = torch.stack(
+                [F.normalize(self.image_anchors[idx].detach().float().squeeze(0), dim=0) for idx in range(active_experts)],
+                dim=0,
+            )
+            text_anchors = torch.stack(
+                [F.normalize(self.text_anchors[idx].detach().float().squeeze(0), dim=0) for idx in range(active_experts)],
+                dim=0,
+            )
+            current_image_anchor = image_anchors[task_id]
+            current_text_anchor = text_anchors[task_id]
+            image_scores = torch.matmul(image_anchors, current_image_anchor)
+            text_scores = torch.matmul(text_anchors, current_text_anchor)
+            history_scores = self.task_relation_scores[task_id, :active_experts].detach().float().to(image_scores.device)
+            relation_logits = self._compose_relation_logits(image_scores, text_scores, history_scores)
+            relation_logits = self._mask_relation_logits(relation_logits)
+            relation_weights = self._build_sparse_relation_weights(
+                relation_logits,
+                top_k=min(int(self._get_relation_config()["routing_top_k"]), active_experts),
+            )
+
+        self.cached_task_fuse_weights = relation_weights.detach()
+        self.cached_task_fuse_task_id = task_id
+        self.cached_task_fuse_expert_num = active_experts
+        return relation_weights
+
+    def _apply_relation_weights_to_experts(self, task_level_weights, sample_level_weights=None):
+        if sample_level_weights is None:
+            sample_level_weights = task_level_weights
         proj_names = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
-        for layer in self.model.layers:
+        final_layer_idx = len(self.model.layers) - 1
+        for layer_idx, layer in enumerate(self.model.layers):
+            active_weights = sample_level_weights if layer_idx == final_layer_idx else task_level_weights
             for proj_name in proj_names:
                 if proj_name in ["q_proj", "k_proj", "v_proj", "o_proj"]:
                     proj_layer = getattr(layer.self_attn, proj_name)
                 else:
                     proj_layer = getattr(layer.mlp, proj_name)
                 if hasattr(proj_layer, "expert_weight"):
-                    proj_layer.expert_weight = compute_expert_weight
+                    proj_layer.task_fuse_weight = task_level_weights
+                    proj_layer.expert_weight = active_weights
+
+    def _get_hide_style_sample_relation_weights(self, active_experts, image_features, text_features):
+        image_anchors = torch.stack(
+            [self.image_anchors[idx].detach().float().squeeze(0) for idx in range(active_experts)],
+            dim=0,
+        ).to(image_features.device)
+        text_anchors = torch.stack(
+            [self.text_anchors[idx].detach().float().squeeze(0) for idx in range(active_experts)],
+            dim=0,
+        ).to(text_features.device)
+
+        image_scores = F.cosine_similarity(
+            image_features.float().unsqueeze(1),
+            image_anchors.unsqueeze(0),
+            dim=2,
+        ).amax(dim=0)
+        text_scores = F.cosine_similarity(
+            text_features.float().unsqueeze(1),
+            text_anchors.unsqueeze(0),
+            dim=2,
+        ).amax(dim=0)
+        combined_scores = (image_scores + text_scores) / 2.0
+        return F.softmax(combined_scores / 0.1, dim=0)
 
     def _update_relation_statistics(self, task_id, relation_weights):
         if relation_weights.numel() == 0:
@@ -303,36 +389,16 @@ class LlavaMetaForCausalLM(ABC):
             self.text_anchors[task_id] = text_sum / self.text_boundary[task_id]
         else:
             active_experts = max(1, min(self.expert_num, len(self.image_anchors)))
-            image_summary = F.normalize(image_guide_features.float().mean(dim=0), dim=0)
-            text_summary = F.normalize(text_guide_features.float().mean(dim=0), dim=0)
-            image_anchors = torch.stack(
-                [F.normalize(self.image_anchors[idx].detach().float().squeeze(0), dim=0) for idx in range(active_experts)],
-                dim=0,
+            task_relation_weights = self._get_task_level_relation_weights(active_experts)
+            relation_weights = self._get_hide_style_sample_relation_weights(
+                active_experts,
+                image_guide_features,
+                text_guide_features,
             )
-            text_anchors = torch.stack(
-                [F.normalize(self.text_anchors[idx].detach().float().squeeze(0), dim=0) for idx in range(active_experts)],
-                dim=0,
+            self._apply_relation_weights_to_experts(
+                task_relation_weights.detach(),
+                relation_weights.detach(),
             )
-            image_scores = torch.matmul(image_anchors, image_summary)
-            text_scores = torch.matmul(text_anchors, text_summary)
-            history_scores = self.expert_usage_prior[:active_experts].detach().float()
-            relation_logits = self._compose_relation_logits(image_scores, text_scores, history_scores)
-
-            min_similarity = float(self._get_relation_config()["routing_min_similarity"])
-            if min_similarity > -1.0:
-                relation_logits = torch.where(
-                    relation_logits >= min_similarity,
-                    relation_logits,
-                    torch.full_like(relation_logits, float("-inf")),
-                )
-                if not torch.isfinite(relation_logits).any():
-                    relation_logits = self._compose_relation_logits(image_scores, text_scores, history_scores)
-
-            relation_weights = self._build_sparse_relation_weights(
-                relation_logits,
-                top_k=min(int(self._get_relation_config()["routing_top_k"]), active_experts),
-            )
-            self._apply_relation_weights_to_experts(relation_weights.tolist())
 
 
         # TODO: image start / end is not implemented here to support pretraining.

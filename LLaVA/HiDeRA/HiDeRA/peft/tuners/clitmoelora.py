@@ -334,6 +334,11 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
 
         self.layer = layer
         self.expert_weight = expert_weight
+        self.task_fuse_weight = expert_weight
+        self._cached_prefused_signature = None
+        self._cached_prefused_delta = None
+        self._cached_prefused_dtype = None
+        self._cached_prefused_device = None
         self.training = train_signal
         
         # init the Gate network
@@ -351,15 +356,50 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
         self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights)
         self.active_adapter = adapter_name
 
-    def _get_active_route_weights(self, device):
+    def _is_last_layer(self):
+        return int(self.layer) == 31
+
+    def _get_active_route_weights(self, device, prefer_task_fuse=False):
         active_experts = max(1, min(self.expert_num, self.cur_task + 1))
-        route_weights = torch.as_tensor(self.expert_weight[:active_experts], device=device, dtype=torch.float32)
+        source_weights = self.task_fuse_weight if prefer_task_fuse else self.expert_weight
+        route_weights = torch.as_tensor(source_weights[:active_experts], device=device, dtype=torch.float32)
         if route_weights.numel() != active_experts:
             route_weights = torch.ones(active_experts, device=device, dtype=torch.float32)
         route_weights = route_weights.clamp_min(0.0)
         if float(route_weights.sum().item()) <= 0.0:
             route_weights = torch.ones_like(route_weights)
         return route_weights / route_weights.sum()
+
+    def _get_prefused_signature(self, route_weights):
+        return tuple(round(float(weight), 8) for weight in route_weights.detach().cpu().tolist())
+
+    def _build_prefused_delta(self, route_weights, dtype, device):
+        delta_weight = torch.zeros(
+            (self.out_features, self.in_features),
+            device=device,
+            dtype=dtype,
+        )
+        for i, expert_weight in enumerate(route_weights):
+            if float(expert_weight.item()) <= 0.0:
+                continue
+            lora_a_weight = self.lora_A[self.active_adapter].loraA[i].weight.to(device=device, dtype=dtype)
+            lora_b_weight = self.lora_B[self.active_adapter].loraB[i].weight.to(device=device, dtype=dtype)
+            delta_weight += expert_weight.to(dtype=dtype) * (lora_b_weight @ lora_a_weight)
+        return transpose(delta_weight, self.fan_in_fan_out)
+
+    def _get_prefused_delta(self, route_weights, x_dtype, device):
+        signature = self._get_prefused_signature(route_weights)
+        if (
+            self._cached_prefused_signature != signature
+            or self._cached_prefused_delta is None
+            or self._cached_prefused_dtype != x_dtype
+            or self._cached_prefused_device != device
+        ):
+            self._cached_prefused_delta = self._build_prefused_delta(route_weights, x_dtype, device)
+            self._cached_prefused_signature = signature
+            self._cached_prefused_dtype = x_dtype
+            self._cached_prefused_device = device
+        return self._cached_prefused_delta
 
 
     def merge(self):
@@ -419,17 +459,26 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
                 lora_b_output = self.lora_B[self.active_adapter].loraB[self.cur_task](lora_a_output)
                 result += lora_b_output * self.scaling[self.active_adapter]
             else:
-                route_weights = self._get_active_route_weights(x.device)
-                for i, expert_weight in enumerate(route_weights):
-                    if float(expert_weight.item()) <= 0.0:
-                        continue
-                    result += (
-                        self.lora_B[self.active_adapter].loraB[i](
-                            self.lora_A[self.active_adapter].loraA[i](self.lora_dropout[self.active_adapter](x)),
+                lora_input = self.lora_dropout[self.active_adapter](x)
+                if self._is_last_layer():
+                    route_weights = self._get_active_route_weights(x.device)
+                    for i, expert_weight in enumerate(route_weights):
+                        if float(expert_weight.item()) <= 0.0:
+                            continue
+                        result += (
+                            self.lora_B[self.active_adapter].loraB[i](
+                                self.lora_A[self.active_adapter].loraA[i](lora_input),
+                            )
+                            * self.scaling[self.active_adapter]
+                            * expert_weight.to(dtype=result.dtype)
                         )
+                else:
+                    route_weights = self._get_active_route_weights(x.device, prefer_task_fuse=True)
+                    prefused_delta = self._get_prefused_delta(route_weights, lora_input.dtype, lora_input.device)
+                    result += (
+                        F.linear(lora_input, prefused_delta)
                         * self.scaling[self.active_adapter]
-                        * expert_weight.to(dtype=result.dtype)
-                    )
+                    ).to(dtype=result.dtype)
         else:
             result = F.linear(x, transpose(self.weight, self.fan_in_fan_out), bias=self.bias)
 

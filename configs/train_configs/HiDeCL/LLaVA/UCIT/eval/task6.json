@@ -1,7 +1,7 @@
 {
-  "gpu_num": 1,
-  "stage": "HiDeCL-task6",
-  "model_path": "/mnt/lyaa/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDeCL/Task6_llava_lora",
+  "gpu_num": 2,
+  "stage": "HiDeCL-task6-hide-task5-2gpu",
+  "model_path": "/mnt/lyaa/MCITlib/checkpoints/UCIT/LLaVA/HiDeCL/full/task6_from_hide_task5_2gpu",
   "result_path": "./results/UCIT/full_each_dataset",
   "text_tower": "/mnt/lyaa/my_llava/clip-vit-large-patch14-336",
   "num_task": 6

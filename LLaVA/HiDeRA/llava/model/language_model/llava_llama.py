@@ -78,6 +78,9 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self.expert_usage_prior = nn.Parameter(torch.zeros(self.max_task_slots), requires_grad=False)
         self.transfer_aux_loss = torch.zeros(())
         self.routing_aux_loss = torch.zeros(())
+        self.cached_task_fuse_weights = None
+        self.cached_task_fuse_task_id = None
+        self.cached_task_fuse_expert_num = None
         self.relation_routing_config = {
             "routing_image_weight": 0.5,
             "routing_text_weight": 0.5,
@@ -91,6 +94,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     def set_cur_task(self, cur_task, expert_num):
         self.cur_task = cur_task
         self.expert_num = expert_num
+        self.clear_relation_routing_cache()
         self.reset_relation_losses()
 
         for name, param in self.image_anchors.named_parameters():
@@ -117,6 +121,12 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             if value is None:
                 continue
             self.relation_routing_config[key] = value
+        self.clear_relation_routing_cache()
+
+    def clear_relation_routing_cache(self):
+        self.cached_task_fuse_weights = None
+        self.cached_task_fuse_task_id = None
+        self.cached_task_fuse_expert_num = None
 
     def reset_relation_losses(self, device=None):
         if device is None:
@@ -128,8 +138,13 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     def get_model(self):
         return self.model
 
-    def set_eval(self, num_task):
-        self.expert_num = num_task
+    def set_eval(self, num_task, eval_task_id=None):
+        self.expert_num = int(num_task)
+        if eval_task_id is None:
+            self.cur_task = max(0, self.expert_num - 1)
+        else:
+            self.cur_task = min(max(int(eval_task_id), 0), max(0, self.expert_num - 1))
+        self.clear_relation_routing_cache()
         self.reset_relation_losses()
 
     def set_clip_tokenizer(self, tokenizer):

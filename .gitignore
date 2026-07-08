@@ -45,6 +45,7 @@ log/
 data/
 datasets/
 dataset/
+cache/
 outputs/
 output/
 results/

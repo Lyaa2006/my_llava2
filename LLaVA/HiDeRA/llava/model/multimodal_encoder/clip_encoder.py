@@ -1,8 +1,17 @@
+import os
 import torch
 import torch.nn as nn
 
 from transformers import CLIPVisionModel, CLIPImageProcessor, CLIPVisionConfig, CLIPVisionModelWithProjection
 from transformers import CLIPTextModel, CLIPTextConfig
+
+
+def _hf_local_only_kwargs(model_name_or_path):
+    if bool(int(os.environ.get("HF_HUB_OFFLINE", "0"))):
+        return {"local_files_only": True}
+    if isinstance(model_name_or_path, str) and os.path.exists(model_name_or_path):
+        return {"local_files_only": True}
+    return {}
 
 
 class CLIPVisionTower(nn.Module):
@@ -18,11 +27,20 @@ class CLIPVisionTower(nn.Module):
         if not delay_load:
             self.load_model()
         else:
-            self.cfg_only = CLIPVisionConfig.from_pretrained(self.vision_tower_name)
+            self.cfg_only = CLIPVisionConfig.from_pretrained(
+                self.vision_tower_name,
+                **_hf_local_only_kwargs(self.vision_tower_name),
+            )
 
     def load_model(self):
-        self.image_processor = CLIPImageProcessor.from_pretrained(self.vision_tower_name)
-        self.vision_tower = CLIPVisionModelWithProjection.from_pretrained(self.vision_tower_name)
+        self.image_processor = CLIPImageProcessor.from_pretrained(
+            self.vision_tower_name,
+            **_hf_local_only_kwargs(self.vision_tower_name),
+        )
+        self.vision_tower = CLIPVisionModelWithProjection.from_pretrained(
+            self.vision_tower_name,
+            **_hf_local_only_kwargs(self.vision_tower_name),
+        )
         self.vision_tower.requires_grad_(False)
 
         self.is_loaded = True
@@ -88,16 +106,22 @@ class CLIPTextTower(nn.Module):
         self.is_loaded = False
 
         self.text_tower_name = text_tower
-        self.select_layer = args.mm_text_select_layer
+        self.select_layer = getattr(args, "mm_text_select_layer", -1)
         # self.select_feature = getattr(args, 'mm_vision_select_feature', 'patch')
 
         if not delay_load:
             self.load_model()
         else:
-            self.cfg_only = CLIPTextConfig.from_pretrained(self.text_tower_name)
+            self.cfg_only = CLIPTextConfig.from_pretrained(
+                self.text_tower_name,
+                **_hf_local_only_kwargs(self.text_tower_name),
+            )
 
     def load_model(self):
-        self.text_tower = CLIPTextModel.from_pretrained(self.text_tower_name)
+        self.text_tower = CLIPTextModel.from_pretrained(
+            self.text_tower_name,
+            **_hf_local_only_kwargs(self.text_tower_name),
+        )
         self.text_tower.requires_grad_(False)
 
         self.is_loaded = True

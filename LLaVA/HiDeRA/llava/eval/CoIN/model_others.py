@@ -32,7 +32,14 @@ def eval_model(args):
     disable_torch_init()
     model_path = os.path.expanduser(args.model_path)
     model_name = get_model_name_from_path(model_path)
-    tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name, num_task=args.num_task, text_tower=args.text_tower)
+    tokenizer, model, image_processor, context_len = load_pretrained_model(
+        model_path,
+        args.model_base,
+        model_name,
+        num_task=args.num_task,
+        text_tower=args.text_tower,
+        eval_task_id=args.eval_task_id,
+    )
 
     with open(os.path.expanduser(args.question_file), "r") as f:
         questions = json.load(f)
@@ -121,6 +128,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--text-tower", type=str)
     parser.add_argument("--num-task", type=int, default=0)
+    parser.add_argument("--eval-task-id", type=int, default=None)
     args = parser.parse_args()
 
     eval_model(args)

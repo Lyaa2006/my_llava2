@@ -9,6 +9,7 @@ read_config() {
 }
 
 TASK="IconQA"
+TASK_ID=3
 GPU_NUM=$(read_config "$TRAIN_CONFIG" gpu_num)
 STAGE=$(read_config "$TRAIN_CONFIG" stage)
 MODELPATH=$(read_config "$TRAIN_CONFIG" model_path)
@@ -31,6 +32,7 @@ IFS=',' read -ra GPULIST <<< "$CUDA_VISIBLE_DEVICES"
 CHUNKS=${#GPULIST[@]}
 
 RESULT_DIR="$RESULT_PATH/$TASK"
+mkdir -p "$RESULT_DIR/$STAGE"
 
 for IDX in $(seq 0 $((CHUNKS-1))); do
     CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python -m llava.eval.CoIN.model_others \
@@ -40,6 +42,7 @@ for IDX in $(seq 0 $((CHUNKS-1))); do
         --image-folder $IMAGE \
         --text-tower $TEXT_TOWER\
         --num-task $NUM_TASK \
+        --eval-task-id $TASK_ID \
         --answers-file $RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl \
         --num-chunks $CHUNKS \
         --chunk-idx $IDX \

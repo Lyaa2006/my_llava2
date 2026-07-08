@@ -28,6 +28,25 @@ if PROJECT_ROOT not in sys.path:
 
 def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, load_4bit=False, device_map="auto", device="cuda", num_task=10, text_tower=None, **kwargs):
     kwargs = {"device_map": device_map, **kwargs}
+    checkpoint_dir = os.path.abspath(os.path.expanduser(model_path))
+    is_local_checkpoint_dir = os.path.isdir(checkpoint_dir)
+    has_lora_adapter = is_local_checkpoint_dir and (
+        os.path.exists(os.path.join(checkpoint_dir, "adapter_model.bin"))
+        or os.path.exists(os.path.join(checkpoint_dir, "adapter_config.json"))
+    )
+    has_non_lora_weights = is_local_checkpoint_dir and os.path.exists(
+        os.path.join(checkpoint_dir, "non_lora_trainables.bin")
+    )
+    cfg_pretrained = None
+    if is_local_checkpoint_dir and os.path.exists(os.path.join(checkpoint_dir, "config.json")):
+        cfg_pretrained = AutoConfig.from_pretrained(checkpoint_dir)
+    architectures = [str(x).lower() for x in getattr(cfg_pretrained, "architectures", [])] if cfg_pretrained is not None else []
+    is_llava_model = (
+        'llava' in model_name.lower()
+        or getattr(cfg_pretrained, "model_type", None) == "llava"
+        or any("llava" in arch for arch in architectures)
+    )
+    is_lora_checkpoint = has_lora_adapter and has_non_lora_weights
 
     if device != "cuda":
         kwargs['device_map'] = {"": device}
@@ -45,12 +64,12 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
     else:
         kwargs['torch_dtype'] = torch.float16
 
-    if 'llava' in model_name.lower():
+    if is_llava_model:
         # Load LLaVA model
-        if 'lora' in model_name.lower() and model_base is None:
+        if is_lora_checkpoint and model_base is None:
             warnings.warn('There is `lora` in model name but no `model_base` is provided. If you are loading a LoRA model, please provide the `model_base` argument. Detailed instruction: https://github.com/haotian-liu/LLaVA#launch-a-model-worker-lora-weights-unmerged.')
-        if 'lora' in model_name.lower() and model_base is not None:
-            lora_cfg_pretrained = AutoConfig.from_pretrained(model_path)
+        if is_lora_checkpoint and model_base is not None:
+            lora_cfg_pretrained = cfg_pretrained if cfg_pretrained is not None else AutoConfig.from_pretrained(model_path)
             tokenizer = AutoTokenizer.from_pretrained(model_base, use_fast=False)
             print('Loading LLaVA from base model...')
             model = LlavaLlamaForCausalLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=lora_cfg_pretrained, **kwargs)
@@ -73,7 +92,6 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
                 model.model.embed_tokens.weight = torch.nn.Parameter(torch.empty(token_num, tokem_dim, device=model.device, dtype=model.dtype))
 
             print('Loading additional LLaVA weights...')
-            checkpoint_dir = os.path.abspath(os.path.expanduser(model_path))
             if not os.path.isdir(checkpoint_dir):
                 raise FileNotFoundError(f"LoRA checkpoint directory does not exist: {model_path}")
             non_lora_path = os.path.join(checkpoint_dir, 'non_lora_trainables.bin')
@@ -104,7 +122,7 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
                 model = LlavaMPTForCausalLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
             else:
                 tokenizer = AutoTokenizer.from_pretrained(model_base, use_fast=False)
-                cfg_pretrained = AutoConfig.from_pretrained(model_path)
+                cfg_pretrained = cfg_pretrained if cfg_pretrained is not None else AutoConfig.from_pretrained(model_path)
                 model = LlavaLlamaForCausalLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
 
             mm_projector_weights = torch.load(os.path.join(model_path, 'mm_projector.bin'), map_location='cpu')
@@ -141,7 +159,7 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
 
     image_processor = None
 
-    if 'llava' in model_name.lower():
+    if is_llava_model:
         mm_use_im_start_end = getattr(model.config, "mm_use_im_start_end", False)
         mm_use_im_patch_token = getattr(model.config, "mm_use_im_patch_token", True)
         if mm_use_im_patch_token:
@@ -151,15 +169,26 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
         model.resize_token_embeddings(len(tokenizer))
 
         vision_tower = model.get_vision_tower()
+        if vision_tower is None:
+            raise RuntimeError(
+                f"LLaVA checkpoint {checkpoint_dir} was loaded without a vision tower. "
+                "Check the saved config for mm_vision_tower/vision_tower."
+            )
         if not vision_tower.is_loaded:
             vision_tower.load_model()
         vision_tower.to(device=device, dtype=torch.float16)
         image_processor = vision_tower.image_processor
 
-        text_tower = model.get_text_tower()
-        if not text_tower.is_loaded:
-            text_tower.load_model()
-        text_tower.to(device=device, dtype=torch.float16)
+        text_tower_model = model.get_text_tower()
+        if text_tower_model is None and text_tower is not None:
+            raise RuntimeError(
+                f"LLaVA checkpoint {checkpoint_dir} was loaded without a text tower, "
+                f"but text_tower={text_tower} was requested."
+            )
+        if text_tower_model is not None:
+            if not text_tower_model.is_loaded:
+                text_tower_model.load_model()
+            text_tower_model.to(device=device, dtype=torch.float16)
 
     if hasattr(model.config, "max_sequence_length"):
         context_len = model.config.max_sequence_length

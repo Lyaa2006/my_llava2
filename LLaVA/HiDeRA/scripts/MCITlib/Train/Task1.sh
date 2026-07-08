@@ -8,6 +8,11 @@ MODEL_VERSION="vicuna-7b-v1.5"
 MODEL_CONFIG=$1
 DATA_CONFIG=$2
 TRAIN_CONFIG=$3
+PROJECT_ROOT="$(cd -- "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+
+export PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
+export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 
 read_config() {
     python3 -c "import json; print(json.load(open('$1'))['$2'])"
@@ -56,12 +61,15 @@ SELECTIVE_TRANSFER_WEIGHT=$(read_config_default "$TRAIN_CONFIG" selective_transf
 if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
     GPU_LIST="$CUDA_VISIBLE_DEVICES"
     GPU_NUM=$(python3 -c "print(len([x for x in '${CUDA_VISIBLE_DEVICES}'.split(',') if x.strip()]))")
+    DEEPSPEED_LAUNCH_ARGS=(--include "localhost:$GPU_LIST")
+    unset CUDA_VISIBLE_DEVICES
 else
     GPU_LIST=""
     for i in $(seq 0 $((GPU_NUM-1))); do
         GPU_LIST+="$i,"
     done
     GPU_LIST=${GPU_LIST%,}
+    DEEPSPEED_LAUNCH_ARGS=(--include "localhost:$GPU_LIST")
 fi
 
 if [ -z "${MASTER_PORT:-}" ]; then
@@ -86,7 +94,7 @@ if [ "$MAX_STEPS" -gt 0 ]; then
     EXTRA_ARGS="$EXTRA_ARGS --max_steps $MAX_STEPS"
 fi
 
-deepspeed --include localhost:$GPU_LIST --master_port "${MASTER_PORT:-9001}" llava/train/train_mem_MOE.py \
+deepspeed "${DEEPSPEED_LAUNCH_ARGS[@]}" --master_port "${MASTER_PORT:-9001}" llava/train/train_mem_MOE.py \
     --deepspeed ./scripts/zero2.json \
     --lora_enable True --lora_r $RANK --lora_alpha $((RANK * 2)) --mm_projector_lr 2e-5 \
     --expert_num $EXPERT \

@@ -1,6 +1,7 @@
 import os
 import torch
 import torch.nn.functional as F
+from contextlib import contextmanager
 
 from torch.utils.data import Sampler
 
@@ -134,6 +135,22 @@ class LengthGroupedSampler(Sampler):
 
 
 class LLaVATrainer(Trainer):
+    @contextmanager
+    def _temporary_anchor_update(self, model, enabled: bool):
+        wrapped = getattr(model, "module", model)
+        had_attr = hasattr(wrapped, "disable_anchor_update")
+        prev_value = getattr(wrapped, "disable_anchor_update", None)
+        try:
+            wrapped.disable_anchor_update = not bool(enabled)
+            yield
+        finally:
+            if had_attr:
+                wrapped.disable_anchor_update = prev_value
+            else:
+                try:
+                    delattr(wrapped, "disable_anchor_update")
+                except AttributeError:
+                    pass
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.train_dataset is None or not has_length(self.train_dataset):
@@ -297,14 +314,15 @@ class LLaVATrainer(Trainer):
         return (hidden_states * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1.0)
 
     def _extract_description_states(self, model, inputs):
-        description_outputs = model(
-            input_ids=inputs["description_input_ids"],
-            attention_mask=inputs["description_attention_mask"],
-            images=inputs.get("images"),
-            output_hidden_states=True,
-            return_dict=True,
-            use_cache=False,
-        )
+        with self._temporary_anchor_update(model, enabled=False):
+            description_outputs = model(
+                input_ids=inputs["description_input_ids"],
+                attention_mask=inputs["description_attention_mask"],
+                images=inputs.get("images"),
+                output_hidden_states=True,
+                return_dict=True,
+                use_cache=False,
+            )
         hidden_states = description_outputs.hidden_states[self.args.description_hidden_layer]
         description_sequences = []
         key_mask_sequences = []

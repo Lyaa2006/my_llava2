@@ -9,6 +9,18 @@ MODEL_CONFIG=$1
 DATA_CONFIG=$2
 TRAIN_CONFIG=$3
 
+if [ -n "${LOG_FILE:-}" ] && [ "${LOG_TEE_ACTIVE:-0}" != "1" ]; then
+    mkdir -p "$(dirname "$LOG_FILE")"
+    export LOG_TEE_ACTIVE=1
+    exec > >(tee -a "$LOG_FILE") 2>&1
+    echo "Logging to: $LOG_FILE"
+fi
+
+export NCCL_IB_DISABLE="${NCCL_IB_DISABLE:-1}"
+export NCCL_P2P_DISABLE="${NCCL_P2P_DISABLE:-1}"
+echo "NCCL_IB_DISABLE=$NCCL_IB_DISABLE"
+echo "NCCL_P2P_DISABLE=$NCCL_P2P_DISABLE"
+
 read_config() {
     python3 -c "import json; print(json.load(open('$1'))['$2'])"
 }
@@ -45,14 +57,22 @@ DATALOADER_NUM_WORKERS=$(read_config_default "$TRAIN_CONFIG" dataloader_num_work
 MAX_STEPS=$(read_config_default "$TRAIN_CONFIG" max_steps -1)
 
 if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
-    GPU_LIST="$CUDA_VISIBLE_DEVICES"
+    VISIBLE_GPU_LIST=$(python3 -c "print(','.join([x.strip() for x in '${CUDA_VISIBLE_DEVICES}'.split(',') if x.strip()]))")
     GPU_NUM=$(python3 -c "print(len([x for x in '${CUDA_VISIBLE_DEVICES}'.split(',') if x.strip()]))")
+    GPU_LIST=""
+    for i in $(seq 0 $((GPU_NUM-1))); do
+        GPU_LIST+="$i,"
+    done
+    GPU_LIST=${GPU_LIST%,}
+    echo "Using CUDA_VISIBLE_DEVICES=$VISIBLE_GPU_LIST"
+    echo "Using DeepSpeed local slots=$GPU_LIST"
 else
     GPU_LIST=""
     for i in $(seq 0 $((GPU_NUM-1))); do
         GPU_LIST+="$i,"
     done
     GPU_LIST=${GPU_LIST%,}
+    echo "Using default local GPU slots=$GPU_LIST"
 fi
 
 if [ -z "${MASTER_PORT:-}" ]; then

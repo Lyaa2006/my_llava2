@@ -772,10 +772,18 @@ def load_model_from_previous_task(model, previous_task_model_path):
     #     model.model.embed_tokens.weight = torch.nn.Parameter(torch.empty(token_num, tokem_dim, device=model.device, dtype=model.dtype))
 
     print('Loading additional LLaVA weights...')
-    if os.path.exists(os.path.join(previous_task_model_path, 'non_lora_trainables.bin')):
-        non_lora_trainables = torch.load(os.path.join(previous_task_model_path, 'non_lora_trainables.bin'), map_location='cpu')
+    local_non_lora_path = os.path.join(previous_task_model_path, 'non_lora_trainables.bin')
+    if os.path.isdir(previous_task_model_path):
+        if not os.path.exists(local_non_lora_path):
+            available_files = sorted(os.listdir(previous_task_model_path))
+            raise FileNotFoundError(
+                f"Expected local checkpoint file '{local_non_lora_path}' was not found. "
+                f"Directory exists but contains: {available_files}"
+            )
+        non_lora_trainables = torch.load(local_non_lora_path, map_location='cpu')
+    elif os.path.exists(local_non_lora_path):
+        non_lora_trainables = torch.load(local_non_lora_path, map_location='cpu')
     else:
-        # this is probably from HF Hub
         from huggingface_hub import hf_hub_download
         def load_from_hf(repo_id, filename, subfolder=None):
             cache_file = hf_hub_download(
@@ -792,6 +800,12 @@ def load_model_from_previous_task(model, previous_task_model_path):
     from peft import PeftModel
     print('Loading LoRA weights...')
     filename = os.path.join(previous_task_model_path, WEIGHTS_NAME)
+    if os.path.isdir(previous_task_model_path) and not os.path.exists(filename):
+        available_files = sorted(os.listdir(previous_task_model_path))
+        raise FileNotFoundError(
+            f"Expected local adapter weights '{filename}' were not found. "
+            f"Directory exists but contains: {available_files}"
+        )
     adapters_weights = torch.load(filename, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
     load_result = set_peft_model_state_dict(model, adapters_weights, adapter_name="default")
     print('Model is loaded...')
