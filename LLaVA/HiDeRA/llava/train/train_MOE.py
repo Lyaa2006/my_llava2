@@ -128,6 +128,14 @@ class TrainingArguments(transformers.TrainingArguments):
     routing_prior_momentum: float = field(default=0.8)
     routing_aux_weight: float = field(default=0.02)
     selective_transfer_weight: float = field(default=0.1)
+    bootstrap_steps: int = field(default=100)
+    role_top_k: int = field(default=2)
+    role_birth_threshold: float = field(default=0.3)
+    routing_early_layers: int = field(default=8)
+    routing_middle_layers: int = field(default=16)
+    routing_late_top_k: int = field(default=2)
+    routing_role_prior_weight: float = field(default=0.0)
+    routing_self_weight: float = field(default=1.0)
 
 
 def maybe_zero_3(param, ignore_status=False, name=None):
@@ -180,6 +188,12 @@ def get_peft_state_non_lora_maybe_zero_3(named_params, require_grad_only=True):
             "text_boundary",
             "task_relation_scores",
             "expert_usage_prior",
+            "role_image_prototypes",
+            "role_text_prototypes",
+            "role_task_count",
+            "role_usage_prior",
+            "task_role_membership",
+            "active_role_count",
         )
         to_return = {
             k: t
@@ -1056,11 +1070,20 @@ def train():
         routing_top_k=training_args.routing_top_k,
         routing_min_similarity=training_args.routing_min_similarity,
         routing_prior_momentum=training_args.routing_prior_momentum,
+        bootstrap_steps=training_args.bootstrap_steps,
+        role_top_k=training_args.role_top_k,
+        role_birth_threshold=training_args.role_birth_threshold,
+        routing_early_layers=training_args.routing_early_layers,
+        routing_middle_layers=training_args.routing_middle_layers,
+        routing_late_top_k=training_args.routing_late_top_k,
+        routing_role_prior_weight=training_args.routing_role_prior_weight,
+        routing_self_weight=training_args.routing_self_weight,
     )
 
     if model_args.previous_task_model_path is not None:
         # load model from previous task
         load_model_from_previous_task(model, model_args.previous_task_model_path)
+        model.set_cur_task(model_args.cur_task, model_args.expert_num)
         model.configure_relation_routing(
             routing_image_weight=training_args.routing_image_weight,
             routing_text_weight=training_args.routing_text_weight,
@@ -1069,6 +1092,14 @@ def train():
             routing_top_k=training_args.routing_top_k,
             routing_min_similarity=training_args.routing_min_similarity,
             routing_prior_momentum=training_args.routing_prior_momentum,
+            bootstrap_steps=training_args.bootstrap_steps,
+            role_top_k=training_args.role_top_k,
+            role_birth_threshold=training_args.role_birth_threshold,
+            routing_early_layers=training_args.routing_early_layers,
+            routing_middle_layers=training_args.routing_middle_layers,
+            routing_late_top_k=training_args.routing_late_top_k,
+            routing_role_prior_weight=training_args.routing_role_prior_weight,
+            routing_self_weight=training_args.routing_self_weight,
         )
 
     data_module = make_supervised_data_module(tokenizer=tokenizer,
@@ -1083,6 +1114,8 @@ def train():
     # else:
     trainer.train()
     trainer.save_state()
+    if hasattr(model, "finalize_current_task_role_memory"):
+        model.finalize_current_task_role_memory()
 
     model.config.use_cache = True
 

@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 import json, deepspeed
 import logging
 import pathlib, random
+import time
 from typing import Dict, Optional, Sequence, List
 
 import torch
@@ -72,6 +73,32 @@ DESCRIPTION_KEY_TERMS = (
 def rank0_print(*args):
     if local_rank in (None, -1, 0):
         print(*args)
+
+
+def is_dist_initialized():
+    return torch.distributed.is_available() and torch.distributed.is_initialized()
+
+
+def maybe_init_distributed_for_cache_extraction(training_args):
+    if training_args.local_rank in (None, -1):
+        return
+    if not torch.distributed.is_available():
+        raise RuntimeError("torch.distributed is not available for multi-GPU cache extraction.")
+    if not torch.distributed.is_initialized():
+        torch.cuda.set_device(training_args.local_rank)
+        torch.distributed.init_process_group(backend="nccl")
+
+
+def get_dist_rank_and_world_size():
+    if is_dist_initialized():
+        return torch.distributed.get_rank(), torch.distributed.get_world_size()
+    return 0, 1
+
+
+def count_cached_description_entries(cache_dir):
+    if not os.path.isdir(cache_dir):
+        return 0
+    return sum(1 for name in os.listdir(cache_dir) if name.endswith(".pt"))
 
 
 @dataclass
@@ -1102,12 +1129,14 @@ def extract_description_cache(model, tokenizer, data_args, training_args):
         raise ValueError("`description_cache_dir` is required when extracting description cache.")
 
     os.makedirs(data_args.description_cache_dir, exist_ok=True)
+    rank, world_size = get_dist_rank_and_world_size()
     move_model_to_training_device(model, training_args)
     data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
     train_dataset = data_module["train_dataset"]
     data_collator = data_module["data_collator"]
 
     model.eval()
+    start_time = time.time()
     cache_manifest = {
         "data_path": data_args.data_path,
         "memory_data_path": data_args.memory_data_path,
@@ -1117,6 +1146,14 @@ def extract_description_cache(model, tokenizer, data_args, training_args):
         "num_samples": len(train_dataset),
     }
     cached_count = 0
+    progress_interval = max(250, min(1000, max(1, len(train_dataset) // 20)))
+    assigned_indices = range(rank, len(train_dataset), world_size)
+    assigned_total = len(assigned_indices)
+
+    rank0_print(
+        f"Description cache extraction started with world_size={world_size}; "
+        f"rank 0 assigned progress will be reported every ~{progress_interval} cached entries."
+    )
 
     def build_autocast_context():
         if training_args.fp16:
@@ -1125,7 +1162,7 @@ def extract_description_cache(model, tokenizer, data_args, training_args):
             return torch.autocast(device_type="cuda", dtype=torch.bfloat16)
         return nullcontext()
 
-    for idx in range(len(train_dataset)):
+    for local_step, idx in enumerate(assigned_indices, start=1):
         sample = train_dataset[idx]
         if "description_input_ids" not in sample:
             continue
@@ -1154,14 +1191,40 @@ def extract_description_cache(model, tokenizer, data_args, training_args):
         torch.save(description_sequences[0].cpu(), cache_path)
         cached_count += 1
 
-        if idx % 100 == 0:
-            rank0_print(f"Cached description states: {idx + 1}/{len(train_dataset)}")
+        if rank == 0 and (
+            cached_count == 1
+            or cached_count % progress_interval == 0
+            or local_step == assigned_total
+        ):
+            elapsed_minutes = (time.time() - start_time) / 60.0
+            global_cached_count = count_cached_description_entries(data_args.description_cache_dir)
+            progress = (global_cached_count / max(1, len(train_dataset))) * 100.0
+            rank0_print(
+                f"Description cache progress: cached {global_cached_count}/{len(train_dataset)} "
+                f"({progress:.1f}%), rank0_local_step {local_step}/{assigned_total}, "
+                f"elapsed {elapsed_minutes:.1f} min"
+            )
 
-    cache_manifest["cached_entries"] = cached_count
-    with open(os.path.join(data_args.description_cache_dir, "meta.json"), "w") as f:
-        json.dump(cache_manifest, f, indent=2)
+    if is_dist_initialized():
+        torch.distributed.barrier()
 
-    if cached_count == 0:
+    total_cached_count = count_cached_description_entries(data_args.description_cache_dir)
+    if rank == 0:
+        cache_manifest["cached_entries"] = total_cached_count
+        cache_manifest["world_size"] = world_size
+        with open(os.path.join(data_args.description_cache_dir, "meta.json"), "w") as f:
+            json.dump(cache_manifest, f, indent=2)
+
+        elapsed_minutes = (time.time() - start_time) / 60.0
+        rank0_print(
+            f"Description cache complete: cached {total_cached_count} entries to "
+            f"{data_args.description_cache_dir} in {elapsed_minutes:.1f} min"
+        )
+
+    if is_dist_initialized():
+        torch.distributed.barrier()
+
+    if total_cached_count == 0:
         raise ValueError("Description cache extraction produced 0 entries.")
 
 
@@ -1251,6 +1314,8 @@ def train():
         )
         training_args.gradient_checkpointing = False
     local_rank = training_args.local_rank
+    if training_args.extract_description_cache_only:
+        maybe_init_distributed_for_cache_extraction(training_args)
     compute_dtype = (torch.float16 if training_args.fp16 else (torch.bfloat16 if training_args.bf16 else torch.float32))
     pretrained_config = build_model_config_with_local_towers(model_args, training_args)
     

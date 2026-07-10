@@ -142,8 +142,31 @@ class LlavaMetaForCausalLM(ABC):
                 "routing_top_k": 2,
                 "routing_min_similarity": -1.0,
                 "routing_prior_momentum": 0.8,
+                "bootstrap_steps": 100,
+                "role_top_k": 2,
+                "role_birth_threshold": 0.3,
+                "routing_early_layers": 8,
+                "routing_middle_layers": 16,
+                "routing_late_top_k": 2,
+                "routing_role_prior_weight": 0.0,
+                "routing_self_weight": 1.0,
             },
         )
+
+    def _safe_normalize(self, tensor):
+        if tensor.ndim > 1:
+            tensor = tensor.squeeze(0)
+        return F.normalize(tensor.float(), dim=0)
+
+    def _get_active_role_count(self):
+        return int(self.active_role_count.detach().float().item())
+
+    def _set_active_role_count(self, count):
+        self.active_role_count.data[0] = float(max(0, count))
+
+    def _ensure_progressive_state_for_task(self):
+        if getattr(self, "_progressive_task_id", None) != int(self.cur_task):
+            self.reset_progressive_state()
 
     def _compose_relation_logits(self, image_scores, text_scores, history_scores):
         config = self._get_relation_config()
@@ -183,89 +206,206 @@ class LlavaMetaForCausalLM(ABC):
             return relation_logits
         return masked_relation_logits
 
-    def _get_task_level_relation_weights(self, active_experts):
-        active_experts = max(1, int(active_experts))
-        cached_weights = getattr(self, "cached_task_fuse_weights", None)
-        cached_task_id = getattr(self, "cached_task_fuse_task_id", None)
-        cached_expert_num = getattr(self, "cached_task_fuse_expert_num", None)
-        task_id = min(max(int(getattr(self, "cur_task", active_experts - 1)), 0), active_experts - 1)
-        if (
-            cached_weights is not None
-            and cached_task_id == task_id
-            and cached_expert_num == active_experts
-        ):
-            return cached_weights
+    def _get_completed_task_count(self):
+        if self.training:
+            return max(0, int(self.cur_task))
+        return max(1, int(self.expert_num))
 
-        if active_experts == 1:
-            relation_weights = torch.ones(
-                1,
-                dtype=torch.float32,
-                device=self.image_anchors[0].device,
-            )
-        else:
-            image_anchors = torch.stack(
-                [F.normalize(self.image_anchors[idx].detach().float().squeeze(0), dim=0) for idx in range(active_experts)],
-                dim=0,
-            )
-            text_anchors = torch.stack(
-                [F.normalize(self.text_anchors[idx].detach().float().squeeze(0), dim=0) for idx in range(active_experts)],
-                dim=0,
-            )
-            current_image_anchor = image_anchors[task_id]
-            current_text_anchor = text_anchors[task_id]
-            image_scores = torch.matmul(image_anchors, current_image_anchor)
-            text_scores = torch.matmul(text_anchors, current_text_anchor)
-            history_scores = self.task_relation_scores[task_id, :active_experts].detach().float().to(image_scores.device)
-            relation_logits = self._compose_relation_logits(image_scores, text_scores, history_scores)
-            relation_logits = self._mask_relation_logits(relation_logits)
-            relation_weights = self._build_sparse_relation_weights(
-                relation_logits,
-                top_k=min(int(self._get_relation_config()["routing_top_k"]), active_experts),
-            )
+    def _get_layer_stage(self, layer_idx, total_layers):
+        config = self._get_relation_config()
+        early_layers = min(max(0, int(config["routing_early_layers"])), total_layers)
+        middle_layers = min(max(0, int(config["routing_middle_layers"])), max(0, total_layers - early_layers))
+        if layer_idx < early_layers:
+            return "early"
+        if layer_idx < early_layers + middle_layers:
+            return "middle"
+        return "late"
 
-        self.cached_task_fuse_weights = relation_weights.detach()
-        self.cached_task_fuse_task_id = task_id
-        self.cached_task_fuse_expert_num = active_experts
-        return relation_weights
-
-    def _apply_relation_weights_to_experts(self, task_level_weights, sample_level_weights=None):
-        if sample_level_weights is None:
-            sample_level_weights = task_level_weights
+    def _apply_relation_weights_to_experts(self, route_plan):
         proj_names = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
-        final_layer_idx = len(self.model.layers) - 1
         for layer_idx, layer in enumerate(self.model.layers):
-            active_weights = sample_level_weights if layer_idx == final_layer_idx else task_level_weights
+            stage = self._get_layer_stage(layer_idx, len(self.model.layers))
+            active_weights = route_plan[stage]
             for proj_name in proj_names:
                 if proj_name in ["q_proj", "k_proj", "v_proj", "o_proj"]:
                     proj_layer = getattr(layer.self_attn, proj_name)
                 else:
                     proj_layer = getattr(layer.mlp, proj_name)
                 if hasattr(proj_layer, "expert_weight"):
-                    proj_layer.task_fuse_weight = task_level_weights
+                    proj_layer.task_fuse_weight = active_weights
                     proj_layer.expert_weight = active_weights
+                    proj_layer.progressive_stage = stage
 
-    def _get_hide_style_sample_relation_weights(self, active_experts, image_features, text_features):
-        image_anchors = torch.stack(
-            [self.image_anchors[idx].detach().float().squeeze(0) for idx in range(active_experts)],
-            dim=0,
-        ).to(image_features.device)
-        text_anchors = torch.stack(
-            [self.text_anchors[idx].detach().float().squeeze(0) for idx in range(active_experts)],
-            dim=0,
-        ).to(text_features.device)
+    def _get_task_anchor(self, task_id):
+        return (
+            self._safe_normalize(self.image_anchors[task_id].detach()),
+            self._safe_normalize(self.text_anchors[task_id].detach()),
+        )
 
-        image_scores = F.cosine_similarity(
-            image_features.float().unsqueeze(1),
-            image_anchors.unsqueeze(0),
-            dim=2,
-        ).amax(dim=0)
-        text_scores = F.cosine_similarity(
-            text_features.float().unsqueeze(1),
-            text_anchors.unsqueeze(0),
-            dim=2,
-        ).amax(dim=0)
-        combined_scores = (image_scores + text_scores) / 2.0
-        return F.softmax(combined_scores / 0.1, dim=0)
+    def _score_tasks(self, task_indices, image_anchor, text_anchor, device):
+        if len(task_indices) == 0:
+            return torch.empty(0, device=device, dtype=torch.float32)
+        image_bank = torch.stack(
+            [self._safe_normalize(self.image_anchors[idx].detach()).to(device) for idx in task_indices],
+            dim=0,
+        )
+        text_bank = torch.stack(
+            [self._safe_normalize(self.text_anchors[idx].detach()).to(device) for idx in task_indices],
+            dim=0,
+        )
+        image_scores = torch.matmul(image_bank, image_anchor.to(device))
+        text_scores = torch.matmul(text_bank, text_anchor.to(device))
+        history_scores = self.expert_usage_prior[task_indices].detach().float().to(device)
+        logits = self._compose_relation_logits(image_scores, text_scores, history_scores)
+        return self._mask_relation_logits(logits)
+
+    def _score_roles(self, image_anchor, text_anchor, device):
+        active_roles = self._get_active_role_count()
+        if active_roles == 0:
+            return torch.empty(0, device=device, dtype=torch.float32)
+        role_image_bank = torch.stack(
+            [self._safe_normalize(self.role_image_prototypes[idx].detach()).to(device) for idx in range(active_roles)],
+            dim=0,
+        )
+        role_text_bank = torch.stack(
+            [self._safe_normalize(self.role_text_prototypes[idx].detach()).to(device) for idx in range(active_roles)],
+            dim=0,
+        )
+        role_scores = (
+            float(self._get_relation_config()["routing_image_weight"]) * torch.matmul(role_image_bank, image_anchor.to(device))
+            + float(self._get_relation_config()["routing_text_weight"]) * torch.matmul(role_text_bank, text_anchor.to(device))
+            + float(self._get_relation_config()["routing_role_prior_weight"]) * self.role_usage_prior[:active_roles].detach().float().to(device)
+        )
+        return self._mask_relation_logits(role_scores)
+
+    def _blend_with_current_task(self, history_weights, active_experts):
+        task_id = min(max(int(self.cur_task), 0), max(0, active_experts - 1))
+        combined = torch.zeros(active_experts, device=history_weights.device, dtype=torch.float32)
+        if history_weights.numel() > 0:
+            combined[:history_weights.numel()] = history_weights
+        combined[task_id] += float(self._get_relation_config()["routing_self_weight"])
+        if float(combined.sum().item()) <= 0.0:
+            combined[task_id] = 1.0
+        return combined / combined.sum()
+
+    def _role_member_tasks(self, role_id, active_experts, exclude_task_id=None):
+        memberships = self.task_role_membership[:active_experts, role_id].detach().float()
+        member_tasks = [idx for idx in range(active_experts) if float(memberships[idx].item()) > 0.0]
+        if exclude_task_id is not None:
+            member_tasks = [idx for idx in member_tasks if idx != exclude_task_id]
+        return member_tasks
+
+    def ensure_role_bank_initialized(self, completed_task_count):
+        completed_task_count = min(int(completed_task_count), self.max_task_slots)
+        if completed_task_count <= 0 or self._get_active_role_count() > 0:
+            return
+        existing_membership = self.task_role_membership[:completed_task_count].detach().abs().sum().item()
+        if existing_membership > 0:
+            active_roles = int((self.role_task_count.detach() > 0).sum().item())
+            self._set_active_role_count(active_roles)
+            return
+
+        for task_id in range(completed_task_count):
+            image_anchor, text_anchor = self._get_task_anchor(task_id)
+            role_scores = self._score_roles(image_anchor, text_anchor, image_anchor.device)
+            if role_scores.numel() == 0 or float(role_scores.max().item()) < float(self._get_relation_config()["role_birth_threshold"]):
+                role_id = self._get_active_role_count()
+                if role_id >= self.max_role_slots:
+                    break
+                self.role_image_prototypes[role_id].data.copy_(image_anchor.unsqueeze(0).to(self.role_image_prototypes[role_id].dtype))
+                self.role_text_prototypes[role_id].data.copy_(text_anchor.unsqueeze(0).to(self.role_text_prototypes[role_id].dtype))
+                self.role_task_count.data[role_id] = 1.0
+                self.role_usage_prior.data[role_id] = 1.0
+                self.task_role_membership.data[task_id].zero_()
+                self.task_role_membership.data[task_id, role_id] = 1.0
+                self._set_active_role_count(role_id + 1)
+                continue
+
+            role_id = int(torch.argmax(role_scores).item())
+            count = float(self.role_task_count[role_id].detach().item())
+            updated_count = count + 1.0
+            new_image_proto = (
+                count * self._safe_normalize(self.role_image_prototypes[role_id].detach())
+                + image_anchor
+            ) / updated_count
+            new_text_proto = (
+                count * self._safe_normalize(self.role_text_prototypes[role_id].detach())
+                + text_anchor
+            ) / updated_count
+            self.role_image_prototypes[role_id].data.copy_(new_image_proto.unsqueeze(0).to(self.role_image_prototypes[role_id].dtype))
+            self.role_text_prototypes[role_id].data.copy_(new_text_proto.unsqueeze(0).to(self.role_text_prototypes[role_id].dtype))
+            self.role_task_count.data[role_id] = updated_count
+            self.role_usage_prior.data[role_id] = max(self.role_usage_prior[role_id].detach().item(), 1.0)
+            self.task_role_membership.data[task_id].zero_()
+            self.task_role_membership.data[task_id, role_id] = 1.0
+
+    def _assign_roles_for_current_task(self, image_anchor, text_anchor):
+        role_scores = self._score_roles(image_anchor, text_anchor, image_anchor.device)
+        if role_scores.numel() == 0:
+            return torch.empty(0, device=image_anchor.device), [], True
+        max_role_score = float(role_scores.max().item())
+        if max_role_score < float(self._get_relation_config()["role_birth_threshold"]):
+            return torch.empty(0, device=image_anchor.device), [], True
+
+        top_m = min(int(self._get_relation_config()["role_top_k"]), role_scores.numel())
+        top_values, top_indices = torch.topk(role_scores, k=top_m)
+        membership = F.softmax(top_values / max(float(self._get_relation_config()["routing_temperature"]), 1e-6), dim=0)
+        return membership, top_indices.tolist(), False
+
+    def _build_progressive_route_plan(self, active_experts, image_anchor, text_anchor, role_membership, candidate_roles):
+        device = image_anchor.device
+        task_id = min(max(int(self.cur_task), 0), max(0, active_experts - 1))
+        if active_experts <= 1 or len(candidate_roles) == 0:
+            identity = torch.zeros(active_experts, device=device, dtype=torch.float32)
+            identity[task_id] = 1.0
+            return {"early": identity, "middle": identity, "late": identity, "candidate_experts": [task_id]}
+
+        early_history = torch.zeros(active_experts, device=device, dtype=torch.float32)
+        middle_history = torch.zeros(active_experts, device=device, dtype=torch.float32)
+        late_history = torch.zeros(active_experts, device=device, dtype=torch.float32)
+        candidate_experts = set()
+
+        for local_idx, role_id in enumerate(candidate_roles):
+            role_weight = float(role_membership[local_idx].item())
+            member_tasks = self._role_member_tasks(role_id, active_experts, exclude_task_id=task_id)
+            if len(member_tasks) == 0:
+                continue
+            uniform_weight = role_weight / float(len(member_tasks))
+            for member_task in member_tasks:
+                early_history[member_task] += uniform_weight
+
+            task_logits = self._score_tasks(member_tasks, image_anchor, text_anchor, device)
+            if task_logits.numel() == 0:
+                continue
+            local_weights = F.softmax(task_logits / max(float(self._get_relation_config()["routing_temperature"]), 1e-6), dim=0)
+            for member_idx, member_task in enumerate(member_tasks):
+                middle_history[member_task] += role_weight * local_weights[member_idx]
+
+            best_local_idx = int(torch.argmax(task_logits).item())
+            candidate_experts.add(member_tasks[best_local_idx])
+
+        if len(candidate_experts) == 0:
+            candidate_experts = {task_id}
+        candidate_experts = sorted(candidate_experts)
+        history_candidates = [idx for idx in candidate_experts if idx != task_id]
+        if len(history_candidates) > 0:
+            candidate_logits = self._score_tasks(history_candidates, image_anchor, text_anchor, device)
+            late_weights_local = self._build_sparse_relation_weights(
+                candidate_logits,
+                top_k=min(int(self._get_relation_config()["routing_late_top_k"]), len(history_candidates)),
+            )
+            for local_idx, member_task in enumerate(history_candidates):
+                late_history[member_task] = late_weights_local[local_idx]
+
+        early = self._blend_with_current_task(early_history, active_experts)
+        middle = self._blend_with_current_task(middle_history, active_experts)
+        late = self._blend_with_current_task(late_history, active_experts)
+        return {
+            "early": early,
+            "middle": middle,
+            "late": late,
+            "candidate_experts": candidate_experts,
+        }
 
     def _update_relation_statistics(self, task_id, relation_weights):
         if relation_weights.numel() == 0:
@@ -280,6 +420,87 @@ class LlavaMetaForCausalLM(ABC):
         previous_prior = self.expert_usage_prior[:relation_weights.numel()].detach().float()
         updated_prior = momentum * previous_prior + (1.0 - momentum) * relation_weights.detach().float()
         self.expert_usage_prior.data[:relation_weights.numel()] = updated_prior.to(self.expert_usage_prior.dtype)
+
+    def _update_task_anchors(self, task_id, current_image_features, current_text_features):
+        image_sum = self.image_anchors[task_id].detach().float().squeeze(0) * self.image_boundary[task_id].detach().float()
+        image_sum = image_sum + current_image_features.float().sum(dim=0)
+        text_sum = self.text_anchors[task_id].detach().float().squeeze(0) * self.text_boundary[task_id].detach().float()
+        text_sum = text_sum + current_text_features.float().sum(dim=0)
+
+        self.image_boundary[task_id].data += current_image_features.shape[0]
+        self.text_boundary[task_id].data += current_text_features.shape[0]
+        self.image_anchors[task_id].data.copy_(
+            (image_sum / self.image_boundary[task_id].detach().float()).unsqueeze(0).to(self.image_anchors[task_id].dtype)
+        )
+        self.text_anchors[task_id].data.copy_(
+            (text_sum / self.text_boundary[task_id].detach().float()).unsqueeze(0).to(self.text_anchors[task_id].dtype)
+        )
+
+    def _update_bootstrap_statistics(self, current_image_features, current_text_features):
+        if self._bootstrap_image_sum is None:
+            self._bootstrap_image_sum = current_image_features.detach().float().sum(dim=0)
+            self._bootstrap_text_sum = current_text_features.detach().float().sum(dim=0)
+        else:
+            self._bootstrap_image_sum = self._bootstrap_image_sum + current_image_features.detach().float().sum(dim=0)
+            self._bootstrap_text_sum = self._bootstrap_text_sum + current_text_features.detach().float().sum(dim=0)
+        self._bootstrap_sample_count += int(current_image_features.shape[0])
+        self._bootstrap_seen_steps += 1
+
+    def _bootstrap_finished(self):
+        return self._bootstrap_seen_steps >= int(self._get_relation_config()["bootstrap_steps"])
+
+    def _finalize_current_task_role_memory_impl(self):
+        task_id = min(max(int(self.cur_task), 0), self.max_task_slots - 1)
+        if task_id > 0:
+            self.ensure_role_bank_initialized(task_id)
+        task_image_anchor, task_text_anchor = self._get_task_anchor(task_id)
+
+        if task_id == 0 and self._get_active_role_count() == 0:
+            self.role_image_prototypes[0].data.copy_(task_image_anchor.unsqueeze(0).to(self.role_image_prototypes[0].dtype))
+            self.role_text_prototypes[0].data.copy_(task_text_anchor.unsqueeze(0).to(self.role_text_prototypes[0].dtype))
+            self.role_task_count.data[0] = 1.0
+            self.role_usage_prior.data[0] = 1.0
+            self.task_role_membership.data[task_id].zero_()
+            self.task_role_membership.data[task_id, 0] = 1.0
+            self._set_active_role_count(1)
+            return
+
+        membership = getattr(self, "_pending_role_membership", None)
+        candidate_roles = getattr(self, "_pending_candidate_roles", [])
+        if membership is None or len(candidate_roles) == 0 or getattr(self, "_pending_role_birth", False):
+            role_id = self._get_active_role_count()
+            if role_id >= self.max_role_slots:
+                role_id = self.max_role_slots - 1
+            self.role_image_prototypes[role_id].data.copy_(task_image_anchor.unsqueeze(0).to(self.role_image_prototypes[role_id].dtype))
+            self.role_text_prototypes[role_id].data.copy_(task_text_anchor.unsqueeze(0).to(self.role_text_prototypes[role_id].dtype))
+            self.role_task_count.data[role_id] = max(1.0, float(self.role_task_count[role_id].detach().item()))
+            self.role_usage_prior.data[role_id] = 1.0
+            self.task_role_membership.data[task_id].zero_()
+            self.task_role_membership.data[task_id, role_id] = 1.0
+            self._set_active_role_count(max(self._get_active_role_count(), role_id + 1))
+            return
+
+        momentum = float(self._get_relation_config()["routing_prior_momentum"])
+        self.task_role_membership.data[task_id].zero_()
+        for local_idx, role_id in enumerate(candidate_roles):
+            weight = float(membership[local_idx].detach().item())
+            if weight <= 0.0:
+                continue
+            count = float(self.role_task_count[role_id].detach().item())
+            updated_count = count + weight
+            updated_image = (
+                count * self._safe_normalize(self.role_image_prototypes[role_id].detach())
+                + weight * task_image_anchor
+            ) / max(updated_count, 1e-6)
+            updated_text = (
+                count * self._safe_normalize(self.role_text_prototypes[role_id].detach())
+                + weight * task_text_anchor
+            ) / max(updated_count, 1e-6)
+            self.role_image_prototypes[role_id].data.copy_(updated_image.unsqueeze(0).to(self.role_image_prototypes[role_id].dtype))
+            self.role_text_prototypes[role_id].data.copy_(updated_text.unsqueeze(0).to(self.role_text_prototypes[role_id].dtype))
+            self.role_task_count.data[role_id] = updated_count
+            self.role_usage_prior.data[role_id] = momentum * self.role_usage_prior[role_id].detach().float() + (1.0 - momentum) * weight
+            self.task_role_membership.data[task_id, role_id] = weight
 
     def prepare_inputs_labels_for_multimodal(
         self, input_ids, position_ids, attention_mask, past_key_values, labels, images
@@ -332,73 +553,91 @@ class LlavaMetaForCausalLM(ABC):
         # text_guide_features: bs, 768
         text_guide_features = text_tower(clip_text_inputs)
 
+        self._ensure_progressive_state_for_task()
         if self.training:
             current_image_features = image_guide_features  # [batch_size, feature_dim]
             current_text_features = text_guide_features  # [batch_size, feature_dim]
             task_id = self.cur_task
-            current_image_summary = F.normalize(current_image_features.float().mean(dim=0), dim=0)
-            current_text_summary = F.normalize(current_text_features.float().mean(dim=0), dim=0)
+            current_image_summary = self._safe_normalize(current_image_features.float().mean(dim=0))
+            current_text_summary = self._safe_normalize(current_text_features.float().mean(dim=0))
 
             if task_id > 0:
-                previous_image_anchors = torch.stack(
-                    [F.normalize(self.image_anchors[idx].detach().float().squeeze(0), dim=0) for idx in range(task_id)],
-                    dim=0,
-                )
-                previous_text_anchors = torch.stack(
-                    [F.normalize(self.text_anchors[idx].detach().float().squeeze(0), dim=0) for idx in range(task_id)],
-                    dim=0,
-                )
-                image_scores = torch.matmul(previous_image_anchors, current_image_summary)
-                text_scores = torch.matmul(previous_text_anchors, current_text_summary)
-                history_scores = self.task_relation_scores[task_id, :task_id].detach().float()
-                relation_logits = self._compose_relation_logits(image_scores, text_scores, history_scores)
+                self.ensure_role_bank_initialized(task_id)
+            self._update_bootstrap_statistics(current_image_features, current_text_features)
 
-                min_similarity = float(self._get_relation_config()["routing_min_similarity"])
-                if min_similarity > -1.0:
-                    relation_logits = torch.where(
-                        relation_logits >= min_similarity,
-                        relation_logits,
-                        torch.full_like(relation_logits, float("-inf")),
+            if task_id == 0 or not self._bootstrap_finished():
+                route_plan = {
+                    "early": torch.eye(max(1, task_id + 1), device=current_image_summary.device, dtype=torch.float32)[task_id],
+                    "middle": torch.eye(max(1, task_id + 1), device=current_image_summary.device, dtype=torch.float32)[task_id],
+                    "late": torch.eye(max(1, task_id + 1), device=current_image_summary.device, dtype=torch.float32)[task_id],
+                    "candidate_experts": [task_id],
+                }
+            else:
+                if not getattr(self, "_role_induction_complete", False):
+                    bootstrap_image_anchor = self._safe_normalize(self._bootstrap_image_sum / max(self._bootstrap_sample_count, 1))
+                    bootstrap_text_anchor = self._safe_normalize(self._bootstrap_text_sum / max(self._bootstrap_sample_count, 1))
+                    membership, candidate_roles, role_birth = self._assign_roles_for_current_task(
+                        bootstrap_image_anchor,
+                        bootstrap_text_anchor,
                     )
-                    if not torch.isfinite(relation_logits).any():
-                        relation_logits = self._compose_relation_logits(image_scores, text_scores, history_scores)
+                    self._pending_role_membership = membership.detach() if membership is not None else None
+                    self._pending_candidate_roles = list(candidate_roles)
+                    self._pending_role_birth = bool(role_birth)
+                    self._role_induction_complete = True
 
-                relation_weights = self._build_sparse_relation_weights(
-                    relation_logits,
-                    top_k=min(int(self._get_relation_config()["routing_top_k"]), task_id),
+                route_plan = self._build_progressive_route_plan(
+                    active_experts=max(1, task_id + 1),
+                    image_anchor=current_image_summary,
+                    text_anchor=current_text_summary,
+                    role_membership=self._pending_role_membership if self._pending_role_membership is not None else torch.empty(0, device=current_image_summary.device),
+                    candidate_roles=self._pending_candidate_roles,
                 )
-                self._update_relation_statistics(task_id, relation_weights)
+                self._pending_candidate_experts = list(route_plan["candidate_experts"])
+                self._update_relation_statistics(task_id, route_plan["late"])
+                if task_id > 0:
+                    historical_image = torch.stack(
+                        [self._safe_normalize(self.image_anchors[idx].detach()) for idx in range(task_id + 1)],
+                        dim=0,
+                    ).to(current_image_summary.device)
+                    historical_text = torch.stack(
+                        [self._safe_normalize(self.text_anchors[idx].detach()) for idx in range(task_id + 1)],
+                        dim=0,
+                    ).to(current_text_summary.device)
+                    target_image = torch.matmul(route_plan["late"].unsqueeze(0), historical_image).squeeze(0)
+                    target_text = torch.matmul(route_plan["late"].unsqueeze(0), historical_text).squeeze(0)
+                    self.transfer_aux_loss = (
+                        1.0 - F.cosine_similarity(current_image_summary.unsqueeze(0), target_image.unsqueeze(0), dim=-1)
+                    ).mean()
+                    self.transfer_aux_loss += (
+                        1.0 - F.cosine_similarity(current_text_summary.unsqueeze(0), target_text.unsqueeze(0), dim=-1)
+                    ).mean()
+                    history_weights = route_plan["late"][:task_id]
+                    if history_weights.numel() > 0:
+                        self.routing_aux_loss = -(history_weights * history_weights.clamp_min(1e-8).log()).sum()
 
-                target_image = torch.matmul(relation_weights.unsqueeze(0), previous_image_anchors).squeeze(0)
-                target_text = torch.matmul(relation_weights.unsqueeze(0), previous_text_anchors).squeeze(0)
-                self.transfer_aux_loss = (
-                    1.0 - F.cosine_similarity(current_image_summary.unsqueeze(0), target_image.unsqueeze(0), dim=-1)
-                ).mean()
-                self.transfer_aux_loss += (
-                    1.0 - F.cosine_similarity(current_text_summary.unsqueeze(0), target_text.unsqueeze(0), dim=-1)
-                ).mean()
-                self.routing_aux_loss = -(relation_weights * relation_weights.clamp_min(1e-8).log()).sum()
-
-            image_sum = self.image_anchors[task_id] * self.image_boundary[task_id] + current_image_features.sum(dim=0)
-            text_sum = self.text_anchors[task_id] * self.text_boundary[task_id] + current_text_features.sum(dim=0)
-
-            self.image_boundary[task_id].data += current_image_features.shape[0]
-            self.text_boundary[task_id].data += current_text_features.shape[0]
-
-            self.image_anchors[task_id] = image_sum / self.image_boundary[task_id]
-            self.text_anchors[task_id] = text_sum / self.text_boundary[task_id]
+            self._apply_relation_weights_to_experts(route_plan)
+            self._update_task_anchors(task_id, current_image_features, current_text_features)
         else:
             active_experts = max(1, min(self.expert_num, len(self.image_anchors)))
-            task_relation_weights = self._get_task_level_relation_weights(active_experts)
-            relation_weights = self._get_hide_style_sample_relation_weights(
+            self.ensure_role_bank_initialized(active_experts)
+            current_image_summary = self._safe_normalize(image_guide_features.float().mean(dim=0))
+            current_text_summary = self._safe_normalize(text_guide_features.float().mean(dim=0))
+            task_membership = self.task_role_membership[self.cur_task].detach().float()
+            candidate_roles = torch.nonzero(task_membership > 0, as_tuple=False).flatten().tolist()
+            membership = task_membership[candidate_roles]
+            if len(candidate_roles) == 0:
+                membership, candidate_roles, _ = self._assign_roles_for_current_task(
+                    current_image_summary,
+                    current_text_summary,
+                )
+            route_plan = self._build_progressive_route_plan(
                 active_experts,
-                image_guide_features,
-                text_guide_features,
+                current_image_summary,
+                current_text_summary,
+                membership if isinstance(membership, torch.Tensor) else torch.empty(0, device=current_image_summary.device),
+                candidate_roles,
             )
-            self._apply_relation_weights_to_experts(
-                task_relation_weights.detach(),
-                relation_weights.detach(),
-            )
+            self._apply_relation_weights_to_experts(route_plan)
 
 
         # TODO: image start / end is not implemented here to support pretraining.

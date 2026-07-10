@@ -138,14 +138,10 @@ fi
 if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
     VISIBLE_GPU_LIST=$(python3 -c "print(','.join([x.strip() for x in '${CUDA_VISIBLE_DEVICES}'.split(',') if x.strip()]))")
     GPU_NUM=$(python3 -c "print(len([x for x in '${CUDA_VISIBLE_DEVICES}'.split(',') if x.strip()]))")
-    GPU_LIST=""
-    for i in $(seq 0 $((GPU_NUM-1))); do
-        GPU_LIST+="$i,"
-    done
-    GPU_LIST=${GPU_LIST%,}
     echo "Using CUDA_VISIBLE_DEVICES=$VISIBLE_GPU_LIST"
-    echo "Using DeepSpeed local slots=$GPU_LIST on remapped visible devices"
-    DEEPSPEED_GPU_ARGS=(--include "localhost:$GPU_LIST")
+    echo "Using DeepSpeed include=localhost:$VISIBLE_GPU_LIST"
+    DEEPSPEED_GPU_ARGS=(--include "localhost:$VISIBLE_GPU_LIST")
+    DEEPSPEED_ENV_PREFIX=(env -u CUDA_VISIBLE_DEVICES)
 else
     GPU_LIST=""
     for i in $(seq 0 $((GPU_NUM-1))); do
@@ -154,6 +150,7 @@ else
     GPU_LIST=${GPU_LIST%,}
     echo "Using default local GPU slots=$GPU_LIST"
     DEEPSPEED_GPU_ARGS=(--include "localhost:$GPU_LIST")
+    DEEPSPEED_ENV_PREFIX=()
 fi
 
 if [ -z "${MASTER_PORT:-}" ]; then
@@ -181,7 +178,7 @@ fi
 if [ "$CACHE_READY" != "True" ]; then
     echo "Rebuilding description cache with $EXPECTED_CACHE_ENTRIES expected entries: $DESCRIPTION_CACHE_DIR"
     rm -rf "$DESCRIPTION_CACHE_DIR"
-    python llava/train/train_MOE.py \
+    "${DEEPSPEED_ENV_PREFIX[@]}" deepspeed "${DEEPSPEED_GPU_ARGS[@]}" --master_port "${MASTER_PORT:-9001}" llava/train/train_MOE.py \
         --lora_enable True \
         --lora_r $RANK \
         --lora_alpha $((RANK * 2)) \
@@ -210,7 +207,7 @@ if [ "$CACHE_READY" != "True" ]; then
         --extract_description_cache_only True
 fi
 
-deepspeed "${DEEPSPEED_GPU_ARGS[@]}" --master_port "${MASTER_PORT:-9001}" llava/train/train_mem_MOE.py \
+"${DEEPSPEED_ENV_PREFIX[@]}" deepspeed "${DEEPSPEED_GPU_ARGS[@]}" --master_port "${MASTER_PORT:-9001}" llava/train/train_mem_MOE.py \
     --deepspeed ./scripts/zero2.json \
     --lora_enable True --lora_r $RANK --lora_alpha $((RANK * 2)) --mm_projector_lr 2e-5 \
     --expert_num $EXPERT \

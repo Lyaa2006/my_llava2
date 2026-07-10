@@ -335,6 +335,7 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
         self.layer = layer
         self.expert_weight = expert_weight
         self.task_fuse_weight = expert_weight
+        self.progressive_stage = "late"
         self._cached_prefused_signature = None
         self._cached_prefused_delta = None
         self._cached_prefused_dtype = None
@@ -356,11 +357,11 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
         self.update_layer(adapter_name, r, lora_alpha, lora_dropout, init_lora_weights)
         self.active_adapter = adapter_name
 
-    def _is_last_layer(self):
-        return int(self.layer) == 31
-
     def _get_active_route_weights(self, device, prefer_task_fuse=False):
-        active_experts = max(1, min(self.expert_num, self.cur_task + 1))
+        if self.training:
+            active_experts = max(1, min(self.expert_num, self.cur_task + 1))
+        else:
+            active_experts = max(1, int(self.expert_num))
         source_weights = self.task_fuse_weight if prefer_task_fuse else self.expert_weight
         route_weights = torch.as_tensor(source_weights[:active_experts], device=device, dtype=torch.float32)
         if route_weights.numel() != active_experts:
@@ -369,6 +370,9 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
         if float(route_weights.sum().item()) <= 0.0:
             route_weights = torch.ones_like(route_weights)
         return route_weights / route_weights.sum()
+
+    def _use_explicit_expert_mix(self):
+        return getattr(self, "progressive_stage", "late") == "late"
 
     def _get_prefused_signature(self, route_weights):
         return tuple(round(float(weight), 8) for weight in route_weights.detach().cpu().tolist())
@@ -452,33 +456,28 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
         elif self.r[self.active_adapter] > 0:   # general lora process
             result = F.linear(x, transpose(self.weight, self.fan_in_fan_out), bias=self.bias)
 
-            x = x.to(self.lora_A[self.active_adapter].loraA[0].weight.dtype)
-
-            if self.training:
-                lora_a_output = self.lora_A[self.active_adapter].loraA[self.cur_task](self.lora_dropout[self.active_adapter](x))
-                lora_b_output = self.lora_B[self.active_adapter].loraB[self.cur_task](lora_a_output)
-                result += lora_b_output * self.scaling[self.active_adapter]
-            else:
-                lora_input = self.lora_dropout[self.active_adapter](x)
-                if self._is_last_layer():
-                    route_weights = self._get_active_route_weights(x.device)
-                    for i, expert_weight in enumerate(route_weights):
-                        if float(expert_weight.item()) <= 0.0:
-                            continue
-                        result += (
-                            self.lora_B[self.active_adapter].loraB[i](
-                                self.lora_A[self.active_adapter].loraA[i](lora_input),
-                            )
-                            * self.scaling[self.active_adapter]
-                            * expert_weight.to(dtype=result.dtype)
-                        )
-                else:
-                    route_weights = self._get_active_route_weights(x.device, prefer_task_fuse=True)
-                    prefused_delta = self._get_prefused_delta(route_weights, lora_input.dtype, lora_input.device)
+            lora_input = self.lora_dropout[self.active_adapter](x.to(self.lora_A[self.active_adapter].loraA[0].weight.dtype))
+            route_weights = self._get_active_route_weights(
+                x.device,
+                prefer_task_fuse=not self._use_explicit_expert_mix(),
+            )
+            if self._use_explicit_expert_mix():
+                for i, expert_weight in enumerate(route_weights):
+                    if float(expert_weight.item()) <= 0.0:
+                        continue
                     result += (
-                        F.linear(lora_input, prefused_delta)
+                        self.lora_B[self.active_adapter].loraB[i](
+                            self.lora_A[self.active_adapter].loraA[i](lora_input),
+                        )
                         * self.scaling[self.active_adapter]
-                    ).to(dtype=result.dtype)
+                        * expert_weight.to(dtype=result.dtype)
+                    )
+            else:
+                prefused_delta = self._get_prefused_delta(route_weights, lora_input.dtype, lora_input.device)
+                result += (
+                    F.linear(lora_input, prefused_delta)
+                    * self.scaling[self.active_adapter]
+                ).to(dtype=result.dtype)
         else:
             result = F.linear(x, transpose(self.weight, self.fan_in_fan_out), bias=self.bias)
 

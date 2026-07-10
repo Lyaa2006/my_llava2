@@ -1,8 +1,8 @@
 {
-  "gpu_num": 1,
+  "gpu_num": 4,
   "stage": "HiDeCL-task3",
-  "model_path": "/mnt/lyaa/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDeCL/Task3_llava_lora",
-  "result_path": "./results/UCIT/full_each_dataset",
+  "model_path": "/mnt/lyaa/MCITlib/checkpoints/UCIT/LLaVA/HiDeCL_from_HiDeTask1_g4b8ga2/Task3_llava_lora",
+  "result_path": "/mnt/lyaa/MCITlib/LLaVA/HiDeCL/results/UCIT/full_each_dataset_hidecl_from_hide_task1_g4b8ga2",
   "text_tower": "/mnt/lyaa/my_llava/clip-vit-large-patch14-336",
   "num_task": 6
 }
