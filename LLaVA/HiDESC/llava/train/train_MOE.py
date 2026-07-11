@@ -60,13 +60,10 @@ DESCRIPTION_KEY_TERMS = (
     "texture",
     "textures",
     "scene",
-    "context",
-    "visible",
     "text",
     "spatial",
     "relation",
     "relations",
-    "evidence",
 )
 
 
@@ -182,8 +179,9 @@ class TrainingArguments(transformers.TrainingArguments):
     description_cache_max_new_entries: int = field(default=-1)
     description_hidden_layer: int = field(default=-2)
     description_max_tokens: int = field(default=32)
-    description_align_weight: float = field(default=1.0)
-    description_utility_weight: float = field(default=1.0)
+    description_focus_weight: float = field(default=0.2)
+    description_energy_weight: float = field(default=1e-4)
+    description_energy_margin: float = field(default=30.0)
     standard_ce_weight: float = field(default=1.0)
 
 

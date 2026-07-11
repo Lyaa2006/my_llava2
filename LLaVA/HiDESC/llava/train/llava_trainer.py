@@ -16,9 +16,6 @@ from transformers.trainer import (
 )
 from typing import List, Optional
 
-from llava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX
-
-
 def maybe_zero_3(param, ignore_status=False, name=None):
     from deepspeed import zero
     from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
@@ -300,19 +297,6 @@ class LLaVATrainer(Trainer):
             padded[idx, :seq_len] = mask[:seq_len].to(device=device, dtype=torch.bool)
         return padded
 
-    def _masked_mean_pool(self, hidden_states, mask):
-        if hidden_states.shape[1] != mask.shape[1]:
-            shared_seq_len = min(hidden_states.shape[1], mask.shape[1])
-            padding_side = getattr(self.model.config, "tokenizer_padding_side", "right")
-            if padding_side == "left":
-                hidden_states = hidden_states[:, -shared_seq_len:]
-                mask = mask[:, -shared_seq_len:]
-            else:
-                hidden_states = hidden_states[:, :shared_seq_len]
-                mask = mask[:, :shared_seq_len]
-        mask = mask.unsqueeze(-1).to(dtype=hidden_states.dtype)
-        return (hidden_states * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1.0)
-
     def _extract_description_states(self, model, inputs):
         with self._temporary_anchor_update(model, enabled=False):
             description_outputs = model(
@@ -337,121 +321,76 @@ class LLaVATrainer(Trainer):
             return description_sequences, None
         return description_sequences, key_mask_sequences
 
-    def _truncate_preserving_targets(
-        self,
-        input_ids: torch.Tensor,
-        labels: torch.Tensor,
-        max_length: int,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        if input_ids.shape[0] <= max_length:
-            return input_ids, labels
+    def _build_effective_key_mask(self, valid_mask, key_mask):
+        if key_mask is None:
+            return valid_mask
+        effective_key_mask = valid_mask & key_mask
+        has_key = effective_key_mask.any(dim=1, keepdim=True)
+        return torch.where(has_key, effective_key_mask, valid_mask)
 
-        target_positions = torch.nonzero(labels.ne(IGNORE_INDEX), as_tuple=False).flatten()
-        if target_positions.numel() == 0 or target_positions[-1].item() < max_length:
-            return input_ids[:max_length], labels[:max_length]
+    def _rms_normalize_hidden(self, hidden_states, eps=1e-6):
+        rms = hidden_states.float().pow(2).mean(dim=-1, keepdim=True).clamp_min(eps).sqrt()
+        return hidden_states.float() / rms
 
-        prefix_len = min(64, max_length - target_positions.numel())
-        suffix_len = max_length - prefix_len
-        input_ids = torch.cat((input_ids[:prefix_len], input_ids[-suffix_len:]), dim=0)
-        labels = torch.cat((labels[:prefix_len], labels[-suffix_len:]), dim=0)
-        return input_ids, labels
+    def _compute_focus_loss(self, current_hidden, reference_hidden, valid_mask, key_mask):
+        normalized_current = self._rms_normalize_hidden(current_hidden)
+        normalized_reference = self._rms_normalize_hidden(reference_hidden.detach())
+        token_change = (normalized_current - normalized_reference).norm(dim=-1) * valid_mask.float()
 
-    def _build_text_only_batch(self, inputs: dict, prefix_len: int) -> dict:
-        if "input_ids" not in inputs or "labels" not in inputs or "attention_mask" not in inputs:
-            raise ValueError("Building description-utility batch requires input_ids, labels, and attention_mask.")
+        effective_key_mask = self._build_effective_key_mask(valid_mask, key_mask)
+        non_key_mask = valid_mask & (~effective_key_mask)
 
-        max_length = int(getattr(self.args, "model_max_length", 2048) or 2048)
-        max_text_len = max(1, max_length - prefix_len)
-        device = inputs["input_ids"].device
+        total_change = token_change.sum(dim=1)
+        active_samples = total_change > 1e-6
+        change_distribution = token_change / total_change.clamp_min(1e-6).unsqueeze(-1)
 
-        sequences = []
-        label_sequences = []
-        for idx in range(inputs["input_ids"].shape[0]):
-            cur_attention = inputs["attention_mask"][idx].bool()
-            cur_input_ids = inputs["input_ids"][idx][cur_attention]
-            cur_labels = inputs["labels"][idx][cur_attention]
+        key_denom = effective_key_mask.sum(dim=1).clamp_min(1).float()
+        non_key_denom = non_key_mask.sum(dim=1).clamp_min(1).float()
+        key_density = (change_distribution * effective_key_mask.float()).sum(dim=1) / key_denom
+        non_key_density = (change_distribution * non_key_mask.float()).sum(dim=1) / non_key_denom
+        key_mass = (change_distribution * effective_key_mask.float()).sum(dim=1)
 
-            keep_mask = cur_input_ids.ne(IMAGE_TOKEN_INDEX)
-            cur_input_ids = cur_input_ids[keep_mask]
-            cur_labels = cur_labels[keep_mask]
-
-            cur_input_ids, cur_labels = self._truncate_preserving_targets(cur_input_ids, cur_labels, max_text_len)
-            sequences.append(cur_input_ids)
-            label_sequences.append(cur_labels)
-
-        pad_token_id = int(getattr(self.tokenizer, "pad_token_id", 0) or 0)
-        input_ids = torch.nn.utils.rnn.pad_sequence(
-            sequences,
-            batch_first=True,
-            padding_value=pad_token_id,
-        ).to(device=device)
-        labels = torch.nn.utils.rnn.pad_sequence(
-            label_sequences,
-            batch_first=True,
-            padding_value=IGNORE_INDEX,
-        ).to(device=device)
-        attention_mask = input_ids.ne(pad_token_id)
-        return {"input_ids": input_ids, "labels": labels, "attention_mask": attention_mask}
-
-    def _compute_description_utility_loss(self, model, inputs, description_states):
-        base_model = getattr(model, "module", model)
-        model_type = getattr(getattr(base_model, "config", None), "model_type", None)
-        if model_type is not None and "mpt" in str(model_type):
-            current_description_states, current_description_mask = self._pad_description_sequences(description_states)
-            description_summary = self._masked_mean_pool(current_description_states.float(), current_description_mask)
-            answer_mask = inputs["labels"].ne(IGNORE_INDEX)
-            if not torch.any(answer_mask):
-                answer_mask = inputs["attention_mask"].bool()
-            answer_hidden_states = model(
-                input_ids=inputs["input_ids"],
-                attention_mask=inputs["attention_mask"],
-                labels=inputs["labels"],
-                images=inputs.get("images"),
-                return_dict=True,
-                output_hidden_states=True,
-                use_cache=False,
-            ).hidden_states[self.args.description_hidden_layer]
-            answer_summary = self._masked_mean_pool(answer_hidden_states.float(), answer_mask)
-            return (1.0 - F.cosine_similarity(answer_summary, description_summary, dim=-1)).mean()
-
-        prefix_states, prefix_mask = self._pad_description_sequences(description_states)
-        prefix_embeds = prefix_states.to(dtype=base_model.get_input_embeddings().weight.dtype)
-        prefix_attention_mask = prefix_mask
-        prefix_len = prefix_embeds.shape[1]
-
-        text_batch = self._build_text_only_batch(inputs, prefix_len=prefix_len)
-        token_embeds = base_model.get_input_embeddings()(text_batch["input_ids"])
-
-        inputs_embeds = torch.cat((prefix_embeds, token_embeds), dim=1)
-        attention_mask = torch.cat((prefix_attention_mask, text_batch["attention_mask"]), dim=1)
-        prefix_labels = torch.full(
-            (text_batch["labels"].shape[0], prefix_len),
-            IGNORE_INDEX,
-            dtype=text_batch["labels"].dtype,
-            device=text_batch["labels"].device,
+        focus_per_sample = -torch.log(key_mass.clamp_min(1e-6))
+        focus_per_sample = torch.where(
+            active_samples,
+            focus_per_sample,
+            torch.zeros_like(focus_per_sample),
         )
-        labels = torch.cat((prefix_labels, text_batch["labels"]), dim=1)
-
-        utility_outputs = model(
-            inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            labels=labels,
-            return_dict=True,
-            use_cache=False,
+        focus_loss = focus_per_sample.sum() / active_samples.float().sum().clamp_min(1.0)
+        focus_ratio = non_key_density / key_density.clamp_min(1e-6)
+        return (
+            focus_loss,
+            key_mass[active_samples].mean() if torch.any(active_samples) else token_change.new_zeros(()),
+            key_density[active_samples].mean() if torch.any(active_samples) else token_change.new_zeros(()),
+            non_key_density[active_samples].mean() if torch.any(active_samples) else token_change.new_zeros(()),
+            focus_ratio[active_samples].mean() if torch.any(active_samples) else token_change.new_zeros(()),
         )
-        return utility_outputs.loss
+
+    def _compute_energy_loss(self, current_hidden, reference_hidden, valid_mask):
+        normalized_current = self._rms_normalize_hidden(current_hidden)
+        normalized_reference = self._rms_normalize_hidden(reference_hidden.detach())
+        token_change = (normalized_current - normalized_reference).norm(dim=-1) * valid_mask.float()
+        mean_change = token_change.sum(dim=1) / valid_mask.sum(dim=1).clamp_min(1).float()
+        energy_margin = float(getattr(self.args, "description_energy_margin", 1.0))
+        energy_loss = F.relu(mean_change - energy_margin).pow(2).mean()
+        return energy_loss, mean_change.mean()
 
     def _maybe_log_description_losses(
         self,
         total_loss,
         standard_loss,
-        description_align_loss,
-        description_utility_loss,
+        description_focus_loss,
+        description_energy_loss,
         valid_token_count,
         base_valid_token_count,
         shared_seq_len,
         reference_sample_count,
         batch_sample_count,
+        key_mass,
+        key_density,
+        non_key_density,
+        focus_ratio,
+        mean_change,
     ):
         logging_steps = max(1, int(getattr(self.args, "logging_steps", 1) or 1))
         global_step = int(getattr(self.state, "global_step", 0))
@@ -461,8 +400,8 @@ class LLaVATrainer(Trainer):
             return
         self._last_description_loss_log_step = global_step
 
-        align_weight = float(getattr(self.args, "description_align_weight", 1.0))
-        utility_weight = float(getattr(self.args, "description_utility_weight", 1.0))
+        focus_weight = float(getattr(self.args, "description_focus_weight", 0.0))
+        energy_weight = float(getattr(self.args, "description_energy_weight", 0.0))
         ce_weight = float(getattr(self.args, "standard_ce_weight", 1.0))
         base_valid = base_valid_token_count.detach().float().clamp_min(1.0)
         used_valid = valid_token_count.detach().float()
@@ -470,19 +409,24 @@ class LLaVATrainer(Trainer):
         self.log({
             "loss/total": total_loss.detach().float().item(),
             "loss/standard_ce": standard_loss.detach().float().item(),
-            "loss/description_align": description_align_loss.detach().float().item(),
-            "loss/description_utility": description_utility_loss.detach().float().item(),
+            "loss/description_focus": description_focus_loss.detach().float().item(),
+            "loss/description_energy": description_energy_loss.detach().float().item(),
             "loss_weighted/standard_ce": (standard_loss.detach().float() * ce_weight).item(),
-            "loss_weighted/description_align": (description_align_loss.detach().float() * align_weight).item(),
-            "loss_weighted/description_utility": (description_utility_loss.detach().float() * utility_weight).item(),
+            "loss_weighted/description_focus": (description_focus_loss.detach().float() * focus_weight).item(),
+            "loss_weighted/description_energy": (description_energy_loss.detach().float() * energy_weight).item(),
             "description/align_token_fraction": (used_valid / base_valid).item(),
             "description/align_tokens": used_valid.item(),
             "description/base_valid_tokens": base_valid_token_count.detach().float().item(),
+            "description/key_mass": key_mass.detach().float().item(),
+            "description/key_density": key_density.detach().float().item(),
+            "description/non_key_density": non_key_density.detach().float().item(),
+            "description/focus_ratio": focus_ratio.detach().float().item(),
+            "description/mean_change": mean_change.detach().float().item(),
             "description/shared_seq_len": float(shared_seq_len),
             "description/reference_samples": float(reference_sample_count),
             "description/reference_sample_fraction": float(reference_sample_count) / max(float(batch_sample_count), 1.0),
-            "config/description_align_weight": align_weight,
-            "config/description_utility_weight": utility_weight,
+            "config/description_focus_weight": focus_weight,
+            "config/description_energy_weight": energy_weight,
             "config/standard_ce_weight": ce_weight,
         })
 
@@ -502,7 +446,6 @@ class LLaVATrainer(Trainer):
         standard_loss = standard_outputs.loss
 
         description_states, description_key_masks = self._extract_description_states(model, inputs)
-        description_utility_loss = self._compute_description_utility_loss(model, inputs, description_states)
         has_reference_states = (
             "reference_description_states" in inputs and "reference_description_mask" in inputs
         )
@@ -538,48 +481,68 @@ class LLaVATrainer(Trainer):
                 shared_seq_len,
                 current_description_states.device,
             )
-            if description_key_mask is not None:
-                key_valid_mask = valid_mask & description_key_mask[:, :shared_seq_len]
-                has_key_tokens = key_valid_mask.any(dim=1, keepdim=True)
-                valid_mask = torch.where(has_key_tokens, key_valid_mask, valid_mask)
             valid_mask = valid_mask & reference_available[:, None].to(valid_mask.device)
+            effective_key_mask = self._build_effective_key_mask(valid_mask, description_key_mask)
             valid_token_count = valid_mask.float().sum()
 
-            diff = (current_description_states.float() - reference_description_states.float()) ** 2
-            valid_mask = valid_mask.unsqueeze(-1).float()
-            description_align_loss = (diff * valid_mask).sum() / (
-                valid_mask.sum().clamp_min(1.0) * current_description_states.shape[-1]
+            (
+                description_focus_loss,
+                key_mass,
+                key_density,
+                non_key_density,
+                focus_ratio,
+            ) = self._compute_focus_loss(
+                current_description_states,
+                reference_description_states,
+                valid_mask,
+                effective_key_mask,
+            )
+            description_energy_loss, mean_change = self._compute_energy_loss(
+                current_description_states,
+                reference_description_states,
+                valid_mask,
             )
         else:
-            description_align_loss = standard_loss.new_zeros(())
+            description_focus_loss = standard_loss.new_zeros(())
+            description_energy_loss = standard_loss.new_zeros(())
             valid_token_count = standard_loss.new_zeros(())
             base_valid_token_count = standard_loss.new_zeros(())
             shared_seq_len = 0
+            key_mass = standard_loss.new_zeros(())
+            key_density = standard_loss.new_zeros(())
+            non_key_density = standard_loss.new_zeros(())
+            focus_ratio = standard_loss.new_zeros(())
+            mean_change = standard_loss.new_zeros(())
 
         total_loss = (
-            self.args.description_align_weight * description_align_loss
-            + self.args.description_utility_weight * description_utility_loss
+            self.args.description_focus_weight * description_focus_loss
+            + self.args.description_energy_weight * description_energy_loss
             + self.args.standard_ce_weight * standard_loss
         )
 
         self._maybe_log_description_losses(
             total_loss=total_loss,
             standard_loss=standard_loss,
-            description_align_loss=description_align_loss,
-            description_utility_loss=description_utility_loss,
+            description_focus_loss=description_focus_loss,
+            description_energy_loss=description_energy_loss,
             valid_token_count=valid_token_count,
             base_valid_token_count=base_valid_token_count,
             shared_seq_len=shared_seq_len,
             reference_sample_count=reference_sample_count,
             batch_sample_count=batch_sample_count,
+            key_mass=key_mass,
+            key_density=key_density,
+            non_key_density=non_key_density,
+            focus_ratio=focus_ratio,
+            mean_change=mean_change,
         )
 
         if return_outputs:
             return total_loss, {
                 "standard_outputs": standard_outputs,
                 "standard_loss": standard_loss.detach(),
-                "description_utility_loss": description_utility_loss.detach(),
-                "description_align_loss": description_align_loss.detach(),
+                "description_focus_loss": description_focus_loss.detach(),
+                "description_energy_loss": description_energy_loss.detach(),
             }
         return total_loss
 

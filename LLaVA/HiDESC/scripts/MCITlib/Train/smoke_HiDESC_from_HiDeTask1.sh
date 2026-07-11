@@ -13,6 +13,7 @@ export NCCL_IB_DISABLE="${NCCL_IB_DISABLE:-1}"
 export NCCL_P2P_DISABLE="${NCCL_P2P_DISABLE:-1}"
 export UCIT_SMOKE=1
 export UCIT_SMOKE_EVAL_LIMIT="${UCIT_SMOKE_EVAL_LIMIT:-32}"
+export DESCRIPTION_CACHE_MODEL_SOURCE="${DESCRIPTION_CACHE_MODEL_SOURCE:-base}"
 
 RUN_ID="${RUN_ID:-HiDESC_smoke_$(date +%Y%m%d_%H%M%S)}"
 RUN_ROOT="${RUN_ROOT:-$MCITLIB_ROOT/checkpoints/UCIT/LLaVA/HiDESC/$RUN_ID}"
@@ -25,7 +26,6 @@ export RUN_ID RUN_ROOT RESULT_ROOT CFG_ROOT LOG_FILE HARD_PATH
 
 mkdir -p "$RUN_ROOT" "$RESULT_ROOT" "$CFG_ROOT" "$LOG_DIR"
 
-# Keep one top-level tee for the whole run; child train scripts append to the same file.
 export LOG_TEE_ACTIVE=1
 exec > >(tee -a "$LOG_FILE") 2>&1
 
@@ -37,8 +37,9 @@ echo "LOG_FILE=$LOG_FILE"
 echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 echo "NCCL_IB_DISABLE=$NCCL_IB_DISABLE"
 echo "NCCL_P2P_DISABLE=$NCCL_P2P_DISABLE"
+echo "DESCRIPTION_CACHE_MODEL_SOURCE=$DESCRIPTION_CACHE_MODEL_SOURCE"
 
-HIDE_TASK1_SRC="/mnt/lyaa/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task1_llava_lora"
+HIDE_TASK1_SRC="${HIDE_TASK1_SRC:-/mnt/lyaa/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task1_llava_lora}"
 TASK1_DST="$RUN_ROOT/Task1_llava_lora"
 
 if [ ! -d "$HIDE_TASK1_SRC" ]; then
@@ -61,6 +62,7 @@ run_id = os.environ["RUN_ID"]
 run_root = os.environ["RUN_ROOT"]
 result_root = os.environ["RESULT_ROOT"]
 cfg_root = os.environ["CFG_ROOT"]
+cache_source = os.environ.get("DESCRIPTION_CACHE_MODEL_SOURCE", "base")
 
 common = {
     "gpu_num": 4,
@@ -82,8 +84,6 @@ common = {
     "standard_ce_weight": 3.0,
 }
 
-description_cache_model_source = os.environ.get("DESCRIPTION_CACHE_MODEL_SOURCE", "base")
-
 task_meta = {
     2: ("ArxivQA-smoke", 1),
     3: ("VizWiz-smoke", 2),
@@ -99,7 +99,7 @@ for tid in range(1, 7):
         "model_path": os.path.join(run_root, f"Task{tid}_llava_lora"),
         "result_path": result_root,
         "text_tower": "/mnt/lyaa/my_llava/clip-vit-large-patch14-336",
-        "num_task": 6,
+        "num_task": tid,
     }
     with open(os.path.join(cfg_root, f"eval_task{tid}.json"), "w") as f:
         json.dump(eval_cfg, f, indent=2)
@@ -112,10 +112,10 @@ for tid, (cache_tag, cur_task) in task_meta.items():
         "previous_model": prev_dir,
         "output_dir": out_dir,
         "cur_task": cur_task,
-        "description_cache_model_source": description_cache_model_source,
+        "description_cache_model_source": cache_source,
         "description_cache_dir": os.path.join(
             prev_dir,
-            f"reference_description_cache_{description_cache_model_source}_{cache_tag}",
+            f"reference_description_cache_{cache_source}_{cache_tag}",
         ),
     })
     with open(os.path.join(cfg_root, f"train_task{tid}.json"), "w") as f:

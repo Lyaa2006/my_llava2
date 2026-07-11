@@ -168,13 +168,63 @@ class LlavaMetaForCausalLM(ABC):
     def _safe_normalize(self, tensor):
         if tensor.ndim > 1:
             tensor = tensor.squeeze(0)
-        return F.normalize(tensor.float(), dim=0)
+        tensor = torch.nan_to_num(tensor.float(), nan=0.0, posinf=0.0, neginf=0.0)
+        return F.normalize(tensor, dim=0)
+
+    def _sanitize_relation_memory(self):
+        if not torch.isfinite(self.active_role_count.detach()).all():
+            self.active_role_count.data.zero_()
+        self.expert_usage_prior.data.copy_(
+            torch.nan_to_num(self.expert_usage_prior.detach(), nan=0.0, posinf=0.0, neginf=0.0)
+        )
+        self.role_task_count.data.copy_(
+            torch.nan_to_num(self.role_task_count.detach(), nan=0.0, posinf=0.0, neginf=0.0)
+        )
+        self.role_usage_prior.data.copy_(
+            torch.nan_to_num(self.role_usage_prior.detach(), nan=0.0, posinf=0.0, neginf=0.0)
+        )
+        self.task_role_membership.data.copy_(
+            torch.nan_to_num(self.task_role_membership.detach(), nan=0.0, posinf=0.0, neginf=0.0)
+        )
+        for prototype_bank in (self.role_image_prototypes, self.role_text_prototypes):
+            for prototype in prototype_bank:
+                prototype.data.copy_(
+                    torch.nan_to_num(prototype.detach(), nan=0.0, posinf=0.0, neginf=0.0)
+                )
 
     def _get_active_role_count(self):
-        return int(self.active_role_count.detach().float().item())
+        self._sanitize_relation_memory()
+        count = int(self.active_role_count.detach().float().item())
+        return min(max(0, count), self._max_supported_role_slots())
 
     def _set_active_role_count(self, count):
-        self.active_role_count.data[0] = float(max(0, count))
+        clamped = min(max(0, int(count)), self._max_supported_role_slots())
+        self.active_role_count.data[0] = float(clamped)
+
+    def _max_supported_role_slots(self):
+        return min(
+            int(getattr(self, "max_role_slots", 0)),
+            len(self.role_image_prototypes),
+            len(self.role_text_prototypes),
+            int(self.role_task_count.shape[0]),
+            int(self.role_usage_prior.shape[0]),
+            int(self.task_role_membership.shape[1]),
+        )
+
+    def _infer_active_role_count(self, completed_task_count=None):
+        max_supported = self._max_supported_role_slots()
+        if max_supported <= 0:
+            return 0
+        if completed_task_count is None:
+            membership = self.task_role_membership.detach()
+        else:
+            membership = self.task_role_membership[:completed_task_count].detach()
+        membership = torch.nan_to_num(membership.float(), nan=0.0, posinf=0.0, neginf=0.0)
+        membership_count = int((membership.abs().sum(dim=0) > 0).sum().item())
+        prototype_count = int(
+            (torch.nan_to_num(self.role_task_count.detach().float(), nan=0.0, posinf=0.0, neginf=0.0) > 0).sum().item()
+        )
+        return min(max(membership_count, prototype_count), max_supported)
 
     def _get_task_anchor(self, task_id):
         return (
@@ -302,7 +352,12 @@ class LlavaMetaForCausalLM(ABC):
         )
 
     def _role_member_tasks(self, role_id, active_experts):
-        memberships = self.task_role_membership[:active_experts, role_id].detach().float()
+        memberships = torch.nan_to_num(
+            self.task_role_membership[:active_experts, role_id].detach().float(),
+            nan=0.0,
+            posinf=0.0,
+            neginf=0.0,
+        )
         return [idx for idx in range(active_experts) if float(memberships[idx].item()) > 0.0]
 
     def _score_tasks(self, task_indices, image_anchor, text_anchor, device):
@@ -318,12 +373,18 @@ class LlavaMetaForCausalLM(ABC):
         )
         image_scores = torch.matmul(image_bank, image_anchor.to(device))
         text_scores = torch.matmul(text_bank, text_anchor.to(device))
-        history_scores = self.expert_usage_prior[task_indices].detach().float().to(device)
+        history_scores = torch.nan_to_num(
+            self.expert_usage_prior[task_indices].detach().float(),
+            nan=0.0,
+            posinf=0.0,
+            neginf=0.0,
+        ).to(device)
         logits = self._compose_relation_logits(image_scores, text_scores, history_scores)
         return self._mask_relation_logits(logits)
 
     def _score_roles(self, active_experts, expert_logits, image_anchor, text_anchor, device, return_details=False):
-        active_roles = self._get_active_role_count()
+        self._sanitize_relation_memory()
+        active_roles = min(self._get_active_role_count(), self._max_supported_role_slots())
         if active_roles == 0:
             empty = torch.empty(0, device=device, dtype=torch.float32)
             if return_details:
@@ -646,17 +707,21 @@ class LlavaMetaForCausalLM(ABC):
         self.expert_usage_prior.data[task_id] = max(1.0, float(self.expert_usage_prior[task_id].detach().item()))
 
     def ensure_role_bank_initialized(self, completed_task_count):
+        self._sanitize_relation_memory()
         completed_task_count = min(int(completed_task_count), self.max_task_slots)
         if completed_task_count <= 0:
             return
-        if self._get_active_role_count() > 0:
-            return
+        current_active_roles = self._get_active_role_count()
+        inferred_active_roles = self._infer_active_role_count(completed_task_count)
+        if current_active_roles > 0:
+            if inferred_active_roles > 0:
+                self._set_active_role_count(max(current_active_roles, inferred_active_roles))
+                return
+            # Older checkpoints may carry a stale active_role_count without any task-role membership.
+            self._set_active_role_count(0)
         existing_membership = self.task_role_membership[:completed_task_count].detach().abs().sum().item()
         if existing_membership > 0:
-            active_roles = int((self.role_task_count.detach() > 0).sum().item())
-            if active_roles <= 0:
-                active_roles = int((self.task_role_membership[:completed_task_count].detach().abs().sum(dim=0) > 0).sum().item())
-            self._set_active_role_count(active_roles)
+            self._set_active_role_count(inferred_active_roles)
             return
 
         for task_id in range(completed_task_count):

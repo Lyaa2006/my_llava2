@@ -108,8 +108,9 @@ PREVIOUS=$(resolve_run_scoped_path "$PREVIOUS_RAW")
 DESCRIPTION_PROMPT=$(read_optional_config "$TRAIN_CONFIG" description_prompt "Describe the image using visual evidence: objects, attributes, shapes, colors, textures, scene context, visible text, and spatial relations.")
 DESCRIPTION_HIDDEN_LAYER=$(read_optional_config "$TRAIN_CONFIG" description_hidden_layer -2)
 DESCRIPTION_MAX_TOKENS=$(read_optional_config "$TRAIN_CONFIG" description_max_tokens 32)
-DESCRIPTION_ALIGN_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_align_weight 1.0)
-DESCRIPTION_UTILITY_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_utility_weight 1.0)
+DESCRIPTION_FOCUS_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_focus_weight 0.2)
+DESCRIPTION_ENERGY_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_energy_weight 1e-4)
+DESCRIPTION_ENERGY_MARGIN=$(read_optional_config "$TRAIN_CONFIG" description_energy_margin 30.0)
 STANDARD_CE_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" standard_ce_weight 1.0)
 DESCRIPTION_CACHE_MODEL_SOURCE=$(read_optional_config "$TRAIN_CONFIG" description_cache_model_source "base")
 DESCRIPTION_CACHE_MAX_NEW_ENTRIES=$(read_optional_config "$TRAIN_CONFIG" description_cache_max_new_entries -1)
@@ -271,8 +272,9 @@ fi
     --enable_description_cl True \
     --description_hidden_layer $DESCRIPTION_HIDDEN_LAYER \
     --description_max_tokens $DESCRIPTION_MAX_TOKENS \
-    --description_align_weight $DESCRIPTION_ALIGN_WEIGHT \
-    --description_utility_weight $DESCRIPTION_UTILITY_WEIGHT \
+    --description_focus_weight $DESCRIPTION_FOCUS_WEIGHT \
+    --description_energy_weight $DESCRIPTION_ENERGY_WEIGHT \
+    --description_energy_margin $DESCRIPTION_ENERGY_MARGIN \
     --standard_ce_weight $STANDARD_CE_WEIGHT \
     --report_to none \
     $EXTRA_ARGS
