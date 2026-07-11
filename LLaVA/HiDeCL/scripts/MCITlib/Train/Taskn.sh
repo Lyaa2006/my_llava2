@@ -54,22 +54,24 @@ PY
 }
 
 cache_meta_matches() {
-    python3 - "$1" "$2" "$3" "$4" "$5" <<'PY'
+    python3 - "$1" "$2" "$3" "$4" "$5" "$6" <<'PY'
 import json
 import os
 import sys
 
-cache_dir, data_path, prompt, hidden_layer, max_tokens = sys.argv[1:]
+cache_dir, data_path, prompt, early_layer, max_tokens, model_source = sys.argv[1:]
 meta_path = os.path.join(cache_dir, "meta.json")
 if not os.path.exists(meta_path):
     print("False")
     raise SystemExit
 with open(meta_path, "r") as f:
     meta = json.load(f)
+cached_layer = meta.get("description_early_layer", meta.get("description_hidden_layer"))
 ok = (
     meta.get("data_path") == data_path
     and meta.get("description_prompt") == prompt
-    and str(meta.get("description_hidden_layer")) == str(hidden_layer)
+    and meta.get("description_cache_model_source", "previous") == model_source
+    and str(cached_layer) == str(early_layer)
     and str(meta.get("description_max_tokens")) == str(max_tokens)
 )
 print("True" if ok else "False")
@@ -95,18 +97,27 @@ OUTPUT_DIR="${OUTPUT_DIR}${RUN_SUFFIX}"
 
 DESCRIPTION_PROMPT=$(read_optional_config "$TRAIN_CONFIG" description_prompt "Describe the image using visual evidence: objects, attributes, shapes, colors, textures, scene context, visible text, and spatial relations.")
 DESCRIPTION_HIDDEN_LAYER=$(read_optional_config "$TRAIN_CONFIG" description_hidden_layer -2)
+DESCRIPTION_EARLY_LAYER=$(read_optional_config "$TRAIN_CONFIG" description_early_layer "$DESCRIPTION_HIDDEN_LAYER")
 DESCRIPTION_MAX_TOKENS=$(read_optional_config "$TRAIN_CONFIG" description_max_tokens 32)
-DESCRIPTION_ALIGN_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_align_weight 1.0)
-DESCRIPTION_UTILITY_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_utility_weight 1.0)
+DESCRIPTION_FOCUS_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_focus_weight 0.02)
+DESCRIPTION_ENERGY_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_energy_weight 0.001)
+DESCRIPTION_ENERGY_MARGIN=$(read_optional_config "$TRAIN_CONFIG" description_energy_margin 5.0)
+DESCRIPTION_FOCUS_ALPHA=$(read_optional_config "$TRAIN_CONFIG" description_focus_alpha 0.4)
+DESCRIPTION_LOSS_WARMUP_RATIO=$(read_optional_config "$TRAIN_CONFIG" description_loss_warmup_ratio 0.05)
 STANDARD_CE_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" standard_ce_weight 1.0)
+DESCRIPTION_CACHE_MODEL_SOURCE=$(read_optional_config "$TRAIN_CONFIG" description_cache_model_source "previous")
 SAVE_STEPS=$(read_optional_config "$TRAIN_CONFIG" save_steps 50000)
 MODEL_MAX_LENGTH=$(read_optional_config "$TRAIN_CONFIG" model_max_length 2048)
 DATALOADER_NUM_WORKERS=$(read_optional_config "$TRAIN_CONFIG" dataloader_num_workers 4)
 MAX_STEPS=$(read_optional_config "$TRAIN_CONFIG" max_steps -1)
-
 DEFAULT_CACHE_TAG=$(basename "$DATA_PATH" .json)
-DEFAULT_DESCRIPTION_CACHE_DIR="$PREVIOUS/reference_description_cache_${DEFAULT_CACHE_TAG}"
+DEFAULT_DESCRIPTION_CACHE_DIR="$PREVIOUS/reference_description_cache_${DESCRIPTION_CACHE_MODEL_SOURCE}_${DEFAULT_CACHE_TAG}"
 DESCRIPTION_CACHE_DIR="${DESCRIPTION_CACHE_DIR:-$(read_optional_config "$TRAIN_CONFIG" description_cache_dir "$DEFAULT_DESCRIPTION_CACHE_DIR")}"
+
+if [ "$DESCRIPTION_CACHE_MODEL_SOURCE" != "base" ] && [ "$DESCRIPTION_CACHE_MODEL_SOURCE" != "previous" ]; then
+    echo "Invalid description_cache_model_source: $DESCRIPTION_CACHE_MODEL_SOURCE (expected base or previous)" >&2
+    exit 1
+fi
 
 if [ ! -d "$PREVIOUS" ]; then
     echo "Previous task checkpoint does not exist: $PREVIOUS" >&2
@@ -116,6 +127,7 @@ fi
 echo "Previous checkpoint: $PREVIOUS"
 echo "Output checkpoint: $OUTPUT_DIR"
 echo "Description cache dir: $DESCRIPTION_CACHE_DIR"
+echo "Description cache model source: $DESCRIPTION_CACHE_MODEL_SOURCE"
 
 EXPECTED_CACHE_ENTRIES=$(count_expected_cache_entries "$DATA_PATH")
 CACHE_READY=False
@@ -126,8 +138,9 @@ if [ -d "$DESCRIPTION_CACHE_DIR" ]; then
         "$DESCRIPTION_CACHE_DIR" \
         "$DATA_PATH" \
         "$DESCRIPTION_PROMPT" \
-        "$DESCRIPTION_HIDDEN_LAYER" \
-        "$DESCRIPTION_MAX_TOKENS")
+        "$DESCRIPTION_EARLY_LAYER" \
+        "$DESCRIPTION_MAX_TOKENS" \
+        "$DESCRIPTION_CACHE_MODEL_SOURCE")
     if [ "$EXISTING_CACHE_ENTRIES" -ge "$EXPECTED_CACHE_ENTRIES" ] && [ "$EXPECTED_CACHE_ENTRIES" -gt 0 ] && [ "$CACHE_META_READY" = "True" ]; then
         CACHE_READY=True
     elif [ "$EXISTING_CACHE_ENTRIES" -gt 0 ]; then
@@ -178,13 +191,17 @@ fi
 if [ "$CACHE_READY" != "True" ]; then
     echo "Rebuilding description cache with $EXPECTED_CACHE_ENTRIES expected entries: $DESCRIPTION_CACHE_DIR"
     rm -rf "$DESCRIPTION_CACHE_DIR"
+    CACHE_PREVIOUS_ARGS=()
+    if [ "$DESCRIPTION_CACHE_MODEL_SOURCE" = "previous" ]; then
+        CACHE_PREVIOUS_ARGS=(--previous_task_model_path "$PREVIOUS")
+    fi
     "${DEEPSPEED_ENV_PREFIX[@]}" deepspeed "${DEEPSPEED_GPU_ARGS[@]}" --master_port "${MASTER_PORT:-9001}" llava/train/train_MOE.py \
         --lora_enable True \
         --lora_r $RANK \
         --lora_alpha $((RANK * 2)) \
         --expert_num $EXPERT \
         --model_name_or_path $MODEL_NAME \
-        --previous_task_model_path $PREVIOUS \
+        "${CACHE_PREVIOUS_ARGS[@]}" \
         --version $PROMPT_VERSION \
         --data_path $DATA_PATH \
         --image_folder $IMAGE \
@@ -202,7 +219,9 @@ if [ "$CACHE_READY" != "True" ]; then
         --lazy_preprocess True \
         --description_prompt "$DESCRIPTION_PROMPT" \
         --description_cache_dir "$DESCRIPTION_CACHE_DIR" \
+        --description_cache_model_source "$DESCRIPTION_CACHE_MODEL_SOURCE" \
         --description_hidden_layer $DESCRIPTION_HIDDEN_LAYER \
+        --description_early_layer $DESCRIPTION_EARLY_LAYER \
         --description_max_tokens $DESCRIPTION_MAX_TOKENS \
         --extract_description_cache_only True
 fi
@@ -248,9 +267,13 @@ fi
     --description_cache_dir "$DESCRIPTION_CACHE_DIR" \
     --enable_description_cl True \
     --description_hidden_layer $DESCRIPTION_HIDDEN_LAYER \
+    --description_early_layer $DESCRIPTION_EARLY_LAYER \
     --description_max_tokens $DESCRIPTION_MAX_TOKENS \
-    --description_align_weight $DESCRIPTION_ALIGN_WEIGHT \
-    --description_utility_weight $DESCRIPTION_UTILITY_WEIGHT \
+    --description_focus_weight $DESCRIPTION_FOCUS_WEIGHT \
+    --description_energy_weight $DESCRIPTION_ENERGY_WEIGHT \
+    --description_energy_margin $DESCRIPTION_ENERGY_MARGIN \
+    --description_focus_alpha $DESCRIPTION_FOCUS_ALPHA \
+    --description_loss_warmup_ratio $DESCRIPTION_LOSS_WARMUP_RATIO \
     --standard_ce_weight $STANDARD_CE_WEIGHT \
     --report_to none \
     $EXTRA_ARGS

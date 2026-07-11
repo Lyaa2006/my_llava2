@@ -178,8 +178,18 @@ class TrainingArguments(transformers.TrainingArguments):
     group_by_modality_length: bool = field(default=False)
     enable_description_cl: bool = field(default=False)
     extract_description_cache_only: bool = field(default=False)
+    description_cache_model_source: str = field(default="previous")
     description_hidden_layer: int = field(default=-2)
+    description_early_layer: Optional[int] = field(default=None)
+    description_middle_layer: Optional[int] = field(default=None)
+    description_late_ce_only_start: Optional[int] = field(default=None)
     description_max_tokens: int = field(default=32)
+    description_focus_weight: float = field(default=0.02)
+    description_energy_weight: float = field(default=0.001)
+    description_energy_margin: float = field(default=5.0)
+    description_focus_alpha: float = field(default=0.4)
+    description_loss_warmup_ratio: float = field(default=0.05)
+    reference_answer_cache_dir: Optional[str] = field(default=None)
     description_align_weight: float = field(default=1.0)
     description_utility_weight: float = field(default=1.0)
     standard_ce_weight: float = field(default=1.0)
@@ -1141,7 +1151,13 @@ def extract_description_cache(model, tokenizer, data_args, training_args):
         "data_path": data_args.data_path,
         "memory_data_path": data_args.memory_data_path,
         "description_prompt": data_args.description_prompt,
+        "description_cache_model_source": training_args.description_cache_model_source,
         "description_hidden_layer": training_args.description_hidden_layer,
+        "description_early_layer": (
+            training_args.description_early_layer
+            if training_args.description_early_layer is not None
+            else training_args.description_hidden_layer
+        ),
         "description_max_tokens": training_args.description_max_tokens,
         "num_samples": len(train_dataset),
     }
@@ -1182,7 +1198,12 @@ def extract_description_cache(model, tokenizer, data_args, training_args):
                 return_dict=True,
                 use_cache=False,
             )
-            hidden_states = outputs.hidden_states[training_args.description_hidden_layer]
+            target_layer = (
+                training_args.description_early_layer
+                if training_args.description_early_layer is not None
+                else training_args.description_hidden_layer
+            )
+            hidden_states = outputs.hidden_states[target_layer]
             description_sequences = select_description_tokens(
                 hidden_states,
                 batch["description_attention_mask"],
@@ -1229,7 +1250,10 @@ def extract_description_cache(model, tokenizer, data_args, training_args):
 
 
 def maybe_sync_description_cache_settings(data_args, training_args):
-    if not training_args.enable_description_cl or data_args.description_cache_dir is None:
+    if (
+        not training_args.enable_description_cl
+        and not training_args.extract_description_cache_only
+    ) or data_args.description_cache_dir is None:
         return
 
     meta_path = os.path.join(data_args.description_cache_dir, "meta.json")
@@ -1247,13 +1271,28 @@ def maybe_sync_description_cache_settings(data_args, training_args):
         )
         training_args.description_max_tokens = cached_max_tokens
 
-    cached_hidden_layer = cache_meta.get("description_hidden_layer")
-    if cached_hidden_layer is not None and cached_hidden_layer != training_args.description_hidden_layer:
+    cached_hidden_layer = cache_meta.get("description_early_layer", cache_meta.get("description_hidden_layer"))
+    current_early_layer = (
+        training_args.description_early_layer
+        if training_args.description_early_layer is not None
+        else training_args.description_hidden_layer
+    )
+    if cached_hidden_layer is not None and cached_hidden_layer != current_early_layer:
         rank0_print(
-            f"Overriding description_hidden_layer from {training_args.description_hidden_layer} "
+            f"Overriding description_early_layer from {current_early_layer} "
             f"to cached value {cached_hidden_layer} based on {meta_path}."
         )
-        training_args.description_hidden_layer = cached_hidden_layer
+        training_args.description_early_layer = cached_hidden_layer
+
+
+def should_load_previous_task_for_cache(training_args):
+    source = str(getattr(training_args, "description_cache_model_source", "previous")).lower()
+    if source not in {"base", "previous"}:
+        raise ValueError(
+            "`description_cache_model_source` must be either `base` or `previous`, "
+            f"got: {training_args.description_cache_model_source}"
+        )
+    return source == "previous"
 
 
 def maybe_set_model_task_from_checkpoint(model, checkpoint_dir, fallback_cur_task, fallback_expert_num):
@@ -1266,7 +1305,6 @@ def maybe_set_model_task_from_checkpoint(model, checkpoint_dir, fallback_cur_tas
     checkpoint_cur_task = int(adapter_config.get("cur_task", checkpoint_cur_task))
     checkpoint_expert_num = int(adapter_config.get("expert_num", checkpoint_expert_num))
     model.set_cur_task(checkpoint_cur_task, checkpoint_expert_num)
-
 
 def build_model_config_with_local_towers(model_args, training_args):
     config = None
@@ -1507,19 +1545,28 @@ def train():
     model.set_tokenizer(tokenizer)
     model.set_cur_task(model_args.cur_task, model_args.expert_num)
 
-    if model_args.previous_task_model_path is not None:
+    if model_args.previous_task_model_path is not None and (
+        not training_args.extract_description_cache_only
+        or should_load_previous_task_for_cache(training_args)
+    ):
         # load model from previous task
         load_model_from_previous_task(model, model_args.previous_task_model_path)
 
     if training_args.extract_description_cache_only:
-        if model_args.previous_task_model_path is None:
-            raise ValueError("`extract_description_cache_only=True` requires `previous_task_model_path`.")
-        maybe_set_model_task_from_checkpoint(
-            model,
-            model_args.previous_task_model_path,
-            model_args.cur_task,
-            model_args.expert_num,
-        )
+        if should_load_previous_task_for_cache(training_args):
+            if model_args.previous_task_model_path is None:
+                raise ValueError(
+                    "`extract_description_cache_only=True` with "
+                    "`description_cache_model_source=previous` requires `previous_task_model_path`."
+                )
+            maybe_set_model_task_from_checkpoint(
+                model,
+                model_args.previous_task_model_path,
+                model_args.cur_task,
+                model_args.expert_num,
+            )
+        else:
+            rank0_print("Description cache extraction will use the base model instead of the previous-task checkpoint.")
         extract_description_cache(model, tokenizer, data_args, training_args)
         return
 

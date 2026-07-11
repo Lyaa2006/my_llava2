@@ -178,6 +178,7 @@ class TrainingArguments(transformers.TrainingArguments):
     group_by_modality_length: bool = field(default=False)
     enable_description_cl: bool = field(default=False)
     extract_description_cache_only: bool = field(default=False)
+    description_cache_model_source: str = field(default="base")
     description_cache_max_new_entries: int = field(default=-1)
     description_hidden_layer: int = field(default=-2)
     description_max_tokens: int = field(default=32)
@@ -1175,6 +1176,7 @@ def extract_description_cache(model, tokenizer, data_args, training_args):
         "data_path": data_args.data_path,
         "memory_data_path": data_args.memory_data_path,
         "description_prompt": data_args.description_prompt,
+        "description_cache_model_source": training_args.description_cache_model_source,
         "description_hidden_layer": training_args.description_hidden_layer,
         "description_max_tokens": training_args.description_max_tokens,
         "num_samples": len(train_dataset),
@@ -1299,6 +1301,16 @@ def maybe_sync_description_cache_settings(data_args, training_args):
             f"to cached value {cached_hidden_layer} based on {meta_path}."
         )
         training_args.description_hidden_layer = cached_hidden_layer
+
+
+def should_load_previous_task_for_cache(training_args):
+    source = str(getattr(training_args, "description_cache_model_source", "base")).lower()
+    if source not in {"base", "previous"}:
+        raise ValueError(
+            "`description_cache_model_source` must be either `base` or `previous`, "
+            f"got: {training_args.description_cache_model_source}"
+        )
+    return source == "previous"
 
 
 def maybe_set_model_task_from_checkpoint(model, checkpoint_dir, fallback_cur_task, fallback_expert_num):
@@ -1552,19 +1564,28 @@ def train():
     model.set_tokenizer(tokenizer)
     model.set_cur_task(model_args.cur_task, model_args.expert_num)
 
-    if model_args.previous_task_model_path is not None:
+    if model_args.previous_task_model_path is not None and (
+        not training_args.extract_description_cache_only
+        or should_load_previous_task_for_cache(training_args)
+    ):
         # load model from previous task
         load_model_from_previous_task(model, model_args.previous_task_model_path)
 
     if training_args.extract_description_cache_only:
-        if model_args.previous_task_model_path is None:
-            raise ValueError("`extract_description_cache_only=True` requires `previous_task_model_path`.")
-        maybe_set_model_task_from_checkpoint(
-            model,
-            model_args.previous_task_model_path,
-            model_args.cur_task,
-            model_args.expert_num,
-        )
+        if should_load_previous_task_for_cache(training_args):
+            if model_args.previous_task_model_path is None:
+                raise ValueError(
+                    "`extract_description_cache_only=True` with "
+                    "`description_cache_model_source=previous` requires `previous_task_model_path`."
+                )
+            maybe_set_model_task_from_checkpoint(
+                model,
+                model_args.previous_task_model_path,
+                model_args.cur_task,
+                model_args.expert_num,
+            )
+        else:
+            rank0_print("Description cache extraction will use the base model instead of the previous-task checkpoint.")
         extract_description_cache(model, tokenizer, data_args, training_args)
         return
 

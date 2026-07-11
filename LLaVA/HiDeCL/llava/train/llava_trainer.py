@@ -1,7 +1,8 @@
 import os
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 
 from torch.utils.data import Sampler
 
@@ -151,6 +152,20 @@ class LLaVATrainer(Trainer):
                     delattr(wrapped, "disable_anchor_update")
                 except AttributeError:
                     pass
+
+    @contextmanager
+    def _temporary_modules_eval(self, model, module_types):
+        module_types = tuple(module_types)
+        toggled = []
+        for module in model.modules():
+            if isinstance(module, module_types):
+                toggled.append((module, module.training))
+                module.training = False
+        try:
+            yield
+        finally:
+            for module, prev_training in toggled:
+                module.training = prev_training
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.train_dataset is None or not has_length(self.train_dataset):
@@ -313,143 +328,208 @@ class LLaVATrainer(Trainer):
         mask = mask.unsqueeze(-1).to(dtype=hidden_states.dtype)
         return (hidden_states * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1.0)
 
-    def _extract_description_states(self, model, inputs):
-        with self._temporary_anchor_update(model, enabled=False):
-            description_outputs = model(
-                input_ids=inputs["description_input_ids"],
-                attention_mask=inputs["description_attention_mask"],
-                images=inputs.get("images"),
-                output_hidden_states=True,
-                return_dict=True,
-                use_cache=False,
-            )
-        hidden_states = description_outputs.hidden_states[self.args.description_hidden_layer]
-        description_sequences = []
-        key_mask_sequences = []
-        description_key_mask = inputs.get("description_key_mask")
-        lengths = inputs["description_attention_mask"].long().sum(dim=1).tolist()
-        for batch_idx, cur_len in enumerate(lengths):
-            start_idx = max(0, cur_len - self.args.description_max_tokens)
-            description_sequences.append(hidden_states[batch_idx, start_idx:cur_len])
-            if description_key_mask is not None:
-                key_mask_sequences.append(description_key_mask[batch_idx, start_idx:cur_len])
-        if description_key_mask is None:
-            return description_sequences, None
-        return description_sequences, key_mask_sequences
+    def _unwrap_model(self, model):
+        return getattr(model, "module", model)
 
-    def _truncate_preserving_targets(
+    def _get_transformer_layers(self, model):
+        wrapped = self._unwrap_model(model)
+        candidates = [
+            wrapped,
+            getattr(wrapped, "model", None),
+            getattr(getattr(wrapped, "base_model", None), "model", None),
+            getattr(getattr(getattr(wrapped, "base_model", None), "model", None), "model", None),
+        ]
+        if hasattr(wrapped, "get_model"):
+            candidates.append(wrapped.get_model())
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            if hasattr(candidate, "layers"):
+                return candidate.layers
+            inner_model = getattr(candidate, "model", None)
+            if inner_model is not None and hasattr(inner_model, "layers"):
+                return inner_model.layers
+        raise ValueError("Could not locate transformer layers for stage hidden-state capture.")
+
+    def _resolve_stage_layers(self, model):
+        layers = self._get_transformer_layers(model)
+        num_layers = len(layers)
+
+        def resolve(layer_idx, fallback=None):
+            if layer_idx is None:
+                layer_idx = fallback
+            if layer_idx is None:
+                raise ValueError("Stage layer index is required.")
+            layer_idx = int(layer_idx)
+            if layer_idx < 0:
+                layer_idx += num_layers
+            if layer_idx < 0 or layer_idx >= num_layers:
+                raise ValueError(f"Resolved stage layer {layer_idx} is outside [0, {num_layers}).")
+            return layer_idx
+
+        fallback_layer = getattr(self.args, "description_hidden_layer", -2)
+        return {
+            "early": resolve(getattr(self.args, "description_early_layer", None), fallback=fallback_layer),
+        }
+
+    def _capture_stage_hidden_states(self, model, target_layers):
+        layer_modules = self._get_transformer_layers(model)
+        captured = {}
+        hooks = []
+
+        for stage_name, layer_idx in target_layers.items():
+            def hook_fn(_module, _inputs, output, current_stage=stage_name):
+                if isinstance(output, tuple):
+                    captured[current_stage] = output[0]
+                else:
+                    captured[current_stage] = output
+
+            hooks.append(layer_modules[layer_idx].register_forward_hook(hook_fn))
+
+        return captured, hooks
+
+    def _run_with_stage_hooks(
         self,
-        input_ids: torch.Tensor,
-        labels: torch.Tensor,
-        max_length: int,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        if input_ids.shape[0] <= max_length:
-            return input_ids, labels
-
-        target_positions = torch.nonzero(labels.ne(IGNORE_INDEX), as_tuple=False).flatten()
-        if target_positions.numel() == 0 or target_positions[-1].item() < max_length:
-            return input_ids[:max_length], labels[:max_length]
-
-        prefix_len = min(64, max_length - target_positions.numel())
-        suffix_len = max_length - prefix_len
-        input_ids = torch.cat((input_ids[:prefix_len], input_ids[-suffix_len:]), dim=0)
-        labels = torch.cat((labels[:prefix_len], labels[-suffix_len:]), dim=0)
-        return input_ids, labels
-
-    def _build_text_only_batch(self, inputs: dict, prefix_len: int) -> dict:
-        if "input_ids" not in inputs or "labels" not in inputs or "attention_mask" not in inputs:
-            raise ValueError("Building description-utility batch requires input_ids, labels, and attention_mask.")
-
-        max_length = int(getattr(self.args, "model_max_length", 2048) or 2048)
-        max_text_len = max(1, max_length - prefix_len)
-        device = inputs["input_ids"].device
-
-        sequences = []
-        label_sequences = []
-        for idx in range(inputs["input_ids"].shape[0]):
-            cur_attention = inputs["attention_mask"][idx].bool()
-            cur_input_ids = inputs["input_ids"][idx][cur_attention]
-            cur_labels = inputs["labels"][idx][cur_attention]
-
-            keep_mask = cur_input_ids.ne(IMAGE_TOKEN_INDEX)
-            cur_input_ids = cur_input_ids[keep_mask]
-            cur_labels = cur_labels[keep_mask]
-
-            cur_input_ids, cur_labels = self._truncate_preserving_targets(cur_input_ids, cur_labels, max_text_len)
-            sequences.append(cur_input_ids)
-            label_sequences.append(cur_labels)
-
-        pad_token_id = int(getattr(self.tokenizer, "pad_token_id", 0) or 0)
-        input_ids = torch.nn.utils.rnn.pad_sequence(
-            sequences,
-            batch_first=True,
-            padding_value=pad_token_id,
-        ).to(device=device)
-        labels = torch.nn.utils.rnn.pad_sequence(
-            label_sequences,
-            batch_first=True,
-            padding_value=IGNORE_INDEX,
-        ).to(device=device)
-        attention_mask = input_ids.ne(pad_token_id)
-        return {"input_ids": input_ids, "labels": labels, "attention_mask": attention_mask}
-
-    def _compute_description_utility_loss(self, model, inputs, description_states):
-        base_model = getattr(model, "module", model)
-        model_type = getattr(getattr(base_model, "config", None), "model_type", None)
-        if model_type is not None and "mpt" in str(model_type):
-            current_description_states, current_description_mask = self._pad_description_sequences(description_states)
-            description_summary = self._masked_mean_pool(current_description_states.float(), current_description_mask)
-            answer_mask = inputs["labels"].ne(IGNORE_INDEX)
-            if not torch.any(answer_mask):
-                answer_mask = inputs["attention_mask"].bool()
-            answer_hidden_states = model(
-                input_ids=inputs["input_ids"],
-                attention_mask=inputs["attention_mask"],
-                labels=inputs["labels"],
-                images=inputs.get("images"),
-                return_dict=True,
-                output_hidden_states=True,
-                use_cache=False,
-            ).hidden_states[self.args.description_hidden_layer]
-            answer_summary = self._masked_mean_pool(answer_hidden_states.float(), answer_mask)
-            return (1.0 - F.cosine_similarity(answer_summary, description_summary, dim=-1)).mean()
-
-        prefix_states, prefix_mask = self._pad_description_sequences(description_states)
-        prefix_embeds = prefix_states.to(dtype=base_model.get_input_embeddings().weight.dtype)
-        prefix_attention_mask = prefix_mask
-        prefix_len = prefix_embeds.shape[1]
-
-        text_batch = self._build_text_only_batch(inputs, prefix_len=prefix_len)
-        token_embeds = base_model.get_input_embeddings()(text_batch["input_ids"])
-
-        inputs_embeds = torch.cat((prefix_embeds, token_embeds), dim=1)
-        attention_mask = torch.cat((prefix_attention_mask, text_batch["attention_mask"]), dim=1)
-        prefix_labels = torch.full(
-            (text_batch["labels"].shape[0], prefix_len),
-            IGNORE_INDEX,
-            dtype=text_batch["labels"].dtype,
-            device=text_batch["labels"].device,
+        model,
+        forward_kwargs,
+        target_layers,
+        *,
+        no_grad=False,
+        disable_anchor_update=False,
+        disable_dropout=False,
+    ):
+        captured, hooks = self._capture_stage_hidden_states(model, target_layers)
+        grad_context = torch.no_grad if no_grad else nullcontext
+        dropout_context = (
+            self._temporary_modules_eval(model, (nn.Dropout,))
+            if disable_dropout
+            else nullcontext()
         )
-        labels = torch.cat((prefix_labels, text_batch["labels"]), dim=1)
-
-        utility_outputs = model(
-            inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            labels=labels,
-            return_dict=True,
-            use_cache=False,
+        anchor_context = (
+            self._temporary_anchor_update(model, enabled=False)
+            if disable_anchor_update
+            else nullcontext()
         )
-        return utility_outputs.loss
+        try:
+            with grad_context(), dropout_context, anchor_context:
+                outputs = model(**forward_kwargs)
+        finally:
+            for hook in hooks:
+                hook.remove()
+        missing = [stage for stage in target_layers if stage not in captured]
+        if missing:
+            raise RuntimeError(f"Failed to capture hidden states for stages: {missing}")
+        return outputs, captured
+
+    def _slice_hidden_with_mask(self, hidden_states, mask, max_tokens=None):
+        if hidden_states.shape[1] != mask.shape[1]:
+            shared_seq_len = min(hidden_states.shape[1], mask.shape[1])
+            padding_side = getattr(self.model.config, "tokenizer_padding_side", "right")
+            if padding_side == "left":
+                hidden_states = hidden_states[:, -shared_seq_len:]
+                mask = mask[:, -shared_seq_len:]
+            else:
+                hidden_states = hidden_states[:, :shared_seq_len]
+                mask = mask[:, :shared_seq_len]
+        if max_tokens is not None and hidden_states.shape[1] > max_tokens:
+            padding_side = getattr(self.model.config, "tokenizer_padding_side", "right")
+            if padding_side == "left":
+                hidden_states = hidden_states[:, -max_tokens:]
+                mask = mask[:, -max_tokens:]
+            else:
+                hidden_states = hidden_states[:, :max_tokens]
+                mask = mask[:, :max_tokens]
+        return hidden_states, mask.bool()
+
+    def _build_effective_key_mask(self, valid_mask, key_mask):
+        if key_mask is None:
+            return valid_mask
+        effective_key_mask = valid_mask & key_mask
+        has_key = effective_key_mask.any(dim=1, keepdim=True)
+        return torch.where(has_key, effective_key_mask, valid_mask)
+
+    def _pool_description_stage(self, hidden_states, attention_mask, key_mask):
+        hidden_states, valid_mask = self._slice_hidden_with_mask(
+            hidden_states,
+            attention_mask,
+            max_tokens=getattr(self.args, "description_max_tokens", None),
+        )
+        if key_mask is not None:
+            _, key_mask = self._slice_hidden_with_mask(
+                hidden_states,
+                key_mask,
+                max_tokens=getattr(self.args, "description_max_tokens", None),
+            )
+        effective_key_mask = self._build_effective_key_mask(valid_mask, key_mask)
+        pooled = self._masked_mean_pool(hidden_states.float(), effective_key_mask)
+        return pooled, hidden_states, valid_mask, effective_key_mask
+
+    def _align_description_reference(self, current_hidden, current_mask, reference_hidden, reference_mask, key_mask):
+        shared_seq_len = min(current_hidden.shape[1], reference_hidden.shape[1], current_mask.shape[1], reference_mask.shape[1])
+        padding_side = getattr(self.model.config, "tokenizer_padding_side", "right")
+        if padding_side == "left":
+            current_hidden = current_hidden[:, -shared_seq_len:]
+            current_mask = current_mask[:, -shared_seq_len:]
+            reference_hidden = reference_hidden[:, -shared_seq_len:]
+            reference_mask = reference_mask[:, -shared_seq_len:]
+            if key_mask is not None:
+                key_mask = key_mask[:, -shared_seq_len:]
+        else:
+            current_hidden = current_hidden[:, :shared_seq_len]
+            current_mask = current_mask[:, :shared_seq_len]
+            reference_hidden = reference_hidden[:, :shared_seq_len]
+            reference_mask = reference_mask[:, :shared_seq_len]
+            if key_mask is not None:
+                key_mask = key_mask[:, :shared_seq_len]
+        valid_mask = current_mask.bool() & reference_mask.bool()
+        effective_key_mask = self._build_effective_key_mask(valid_mask, key_mask)
+        return current_hidden, reference_hidden, valid_mask, effective_key_mask
+
+    def _compute_stage_delta(self, current_states, reference_states):
+        return current_states.float() - reference_states.detach().float()
+
+    def _compute_focus_loss(self, current_hidden, reference_hidden, valid_mask, key_mask):
+        delta = current_hidden.float() - reference_hidden.detach().float()
+        token_energy = delta.norm(dim=-1)
+        key_mask = valid_mask & key_mask
+        has_key = key_mask.any(dim=1, keepdim=True)
+        key_mask = torch.where(has_key, key_mask, valid_mask)
+        non_key_mask = valid_mask & (~key_mask)
+
+        key_denom = key_mask.sum(dim=1).clamp_min(1).float()
+        non_key_denom = non_key_mask.sum(dim=1).clamp_min(1).float()
+        key_energy = (token_energy * key_mask.float()).sum(dim=1) / key_denom
+        non_key_energy = (token_energy * non_key_mask.float()).sum(dim=1) / non_key_denom
+
+        alpha = float(getattr(self.args, "description_focus_alpha", 0.4))
+        focus_loss = F.relu(non_key_energy - alpha * key_energy).mean()
+        return focus_loss, key_energy.mean(), non_key_energy.mean()
+
+    def _compute_energy_loss(self, delta_desc, margin):
+        desc_norm = delta_desc.float().norm(dim=-1)
+        energy_loss = F.relu(desc_norm - float(margin)).pow(2).mean()
+        return energy_loss, desc_norm.mean()
+
+    def _get_aux_loss_scale(self):
+        warmup_ratio = float(getattr(self.args, "description_loss_warmup_ratio", 0.0) or 0.0)
+        if warmup_ratio <= 0.0:
+            return 1.0
+        max_steps = int(getattr(self.state, "max_steps", 0) or getattr(self.args, "max_steps", 0) or 0)
+        if max_steps <= 0:
+            return 1.0
+        warmup_steps = max(1, int(max_steps * warmup_ratio))
+        return min(1.0, float(self.state.global_step + 1) / float(warmup_steps))
 
     def _maybe_log_description_losses(
         self,
         total_loss,
         standard_loss,
-        description_align_loss,
-        description_utility_loss,
-        valid_token_count,
-        base_valid_token_count,
-        shared_seq_len,
+        focus_loss,
+        energy_loss,
+        aux_scale,
+        delta_desc_early_norm,
+        key_energy,
+        non_key_energy,
     ):
         logging_steps = max(1, int(getattr(self.args, "logging_steps", 1) or 1))
         global_step = int(getattr(self.state, "global_step", 0))
@@ -459,102 +539,118 @@ class LLaVATrainer(Trainer):
             return
         self._last_description_loss_log_step = global_step
 
-        align_weight = float(getattr(self.args, "description_align_weight", 1.0))
-        utility_weight = float(getattr(self.args, "description_utility_weight", 1.0))
+        focus_weight = float(getattr(self.args, "description_focus_weight", 0.0))
+        energy_weight = float(getattr(self.args, "description_energy_weight", 0.0))
         ce_weight = float(getattr(self.args, "standard_ce_weight", 1.0))
-        base_valid = base_valid_token_count.detach().float().clamp_min(1.0)
-        used_valid = valid_token_count.detach().float()
 
         self.log({
             "loss/total": total_loss.detach().float().item(),
             "loss/standard_ce": standard_loss.detach().float().item(),
-            "loss/description_align": description_align_loss.detach().float().item(),
-            "loss/description_utility": description_utility_loss.detach().float().item(),
+            "loss/description_focus": focus_loss.detach().float().item(),
+            "loss/description_energy": energy_loss.detach().float().item(),
             "loss_weighted/standard_ce": (standard_loss.detach().float() * ce_weight).item(),
-            "loss_weighted/description_align": (description_align_loss.detach().float() * align_weight).item(),
-            "loss_weighted/description_utility": (description_utility_loss.detach().float() * utility_weight).item(),
-            "description/align_token_fraction": (used_valid / base_valid).item(),
-            "description/align_tokens": used_valid.item(),
-            "description/base_valid_tokens": base_valid_token_count.detach().float().item(),
-            "description/shared_seq_len": float(shared_seq_len),
-            "config/description_align_weight": align_weight,
-            "config/description_utility_weight": utility_weight,
+            "loss_weighted/description_focus": (
+                focus_loss.detach().float() * focus_weight * aux_scale
+            ).item(),
+            "loss_weighted/description_energy": (
+                energy_loss.detach().float() * energy_weight * aux_scale
+            ).item(),
+            "description/aux_scale": float(aux_scale),
+            "description/delta_desc_early_norm": delta_desc_early_norm.detach().float().item(),
+            "description/key_energy": key_energy.detach().float().item(),
+            "description/non_key_energy": non_key_energy.detach().float().item(),
+            "config/description_focus_weight": focus_weight,
+            "config/description_energy_weight": energy_weight,
             "config/standard_ce_weight": ce_weight,
         })
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         if not getattr(self.args, "enable_description_cl", False) or "description_input_ids" not in inputs:
             return super().compute_loss(model, inputs, return_outputs=return_outputs)
+        if "reference_description_states" not in inputs or "reference_description_mask" not in inputs:
+            raise ValueError("Description continual-learning training requires cached reference description states.")
 
+        stage_layers = self._resolve_stage_layers(model)
         standard_outputs = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
             labels=inputs["labels"],
             images=inputs.get("images"),
             return_dict=True,
-            output_hidden_states=False,
             use_cache=False,
         )
         standard_loss = standard_outputs.loss
 
-        if "reference_description_states" not in inputs or "reference_description_mask" not in inputs:
-            raise ValueError("Description continual-learning loss requires offline cached reference description states.")
+        desc_forward_kwargs = {
+            "input_ids": inputs["description_input_ids"],
+            "attention_mask": inputs["description_attention_mask"],
+            "images": inputs.get("images"),
+            "return_dict": True,
+            "use_cache": False,
+        }
 
-        description_states, description_key_masks = self._extract_description_states(model, inputs)
-        description_utility_loss = self._compute_description_utility_loss(model, inputs, description_states)
-
-        current_description_states, current_description_mask = self._pad_description_sequences(
-            description_states,
-            dtype=inputs["reference_description_states"].dtype,
-        )
-        reference_description_states = inputs["reference_description_states"].to(current_description_states.device)
-        reference_description_mask = inputs["reference_description_mask"].to(current_description_states.device)
-        shared_seq_len = min(current_description_states.shape[1], reference_description_states.shape[1])
-        current_description_states = current_description_states[:, :shared_seq_len]
-        current_description_mask = current_description_mask[:, :shared_seq_len]
-        reference_description_states = reference_description_states[:, :shared_seq_len]
-        reference_description_mask = reference_description_mask[:, :shared_seq_len]
-        valid_mask = current_description_mask & reference_description_mask
-        base_valid_token_count = valid_mask.float().sum()
-        description_key_mask = self._pad_description_key_masks(
-            description_key_masks,
-            shared_seq_len,
-            current_description_states.device,
-        )
-        if description_key_mask is not None:
-            key_valid_mask = valid_mask & description_key_mask[:, :shared_seq_len]
-            has_key_tokens = key_valid_mask.any(dim=1, keepdim=True)
-            valid_mask = torch.where(has_key_tokens, key_valid_mask, valid_mask)
-        valid_token_count = valid_mask.float().sum()
-
-        diff = (current_description_states.float() - reference_description_states.float()) ** 2
-        valid_mask = valid_mask.unsqueeze(-1).float()
-        description_align_loss = (diff * valid_mask).sum() / (
-            valid_mask.sum().clamp_min(1.0) * current_description_states.shape[-1]
+        _, desc_cur_hidden = self._run_with_stage_hooks(
+            model,
+            desc_forward_kwargs,
+            stage_layers,
+            no_grad=False,
+            disable_anchor_update=True,
+            disable_dropout=False,
         )
 
-        total_loss = (
-            self.args.description_align_weight * description_align_loss
-            + self.args.description_utility_weight * description_utility_loss
-            + self.args.standard_ce_weight * standard_loss
+        description_key_mask = inputs.get("description_key_mask")
+        _, desc_cur_early_hidden, desc_cur_mask, desc_key_early = self._pool_description_stage(
+            desc_cur_hidden["early"],
+            inputs["description_attention_mask"],
+            description_key_mask,
+        )
+        reference_description_states = inputs["reference_description_states"].to(desc_cur_early_hidden.device)
+        reference_description_mask = inputs["reference_description_mask"].to(desc_cur_early_hidden.device)
+        desc_cur_early_hidden, desc_ref_early_hidden, desc_valid_early, desc_key_early = self._align_description_reference(
+            desc_cur_early_hidden.float(),
+            desc_cur_mask,
+            reference_description_states.float(),
+            reference_description_mask,
+            desc_key_early,
+        )
+        desc_cur_early = self._masked_mean_pool(desc_cur_early_hidden, desc_key_early)
+        desc_ref_early = self._masked_mean_pool(desc_ref_early_hidden, desc_key_early)
+        delta_desc_early = self._compute_stage_delta(desc_cur_early, desc_ref_early)
+        focus_loss, key_energy, non_key_energy = self._compute_focus_loss(
+            desc_cur_early_hidden,
+            desc_ref_early_hidden,
+            desc_valid_early,
+            desc_key_early,
+        )
+        energy_loss, delta_desc_early_norm = self._compute_energy_loss(
+            delta_desc_early,
+            getattr(self.args, "description_energy_margin", 1.0),
+        )
+
+        aux_scale = self._get_aux_loss_scale()
+        total_loss = self.args.standard_ce_weight * standard_loss
+        total_loss = total_loss + aux_scale * (
+            self.args.description_focus_weight * focus_loss
+            + self.args.description_energy_weight * energy_loss
         )
 
         self._maybe_log_description_losses(
             total_loss=total_loss,
             standard_loss=standard_loss,
-            description_align_loss=description_align_loss,
-            description_utility_loss=description_utility_loss,
-            valid_token_count=valid_token_count,
-            base_valid_token_count=base_valid_token_count,
-            shared_seq_len=shared_seq_len,
+            focus_loss=focus_loss,
+            energy_loss=energy_loss,
+            aux_scale=aux_scale,
+            delta_desc_early_norm=delta_desc_early_norm,
+            key_energy=key_energy,
+            non_key_energy=non_key_energy,
         )
 
         if return_outputs:
             return total_loss, {
                 "standard_outputs": standard_outputs,
                 "standard_loss": standard_loss.detach(),
-                "description_utility_loss": description_utility_loss.detach(),
-                "description_align_loss": description_align_loss.detach(),
+                "description_focus_loss": focus_loss.detach(),
+                "description_energy_loss": energy_loss.detach(),
             }
         return total_loss
 

@@ -64,12 +64,12 @@ PY
 }
 
 cache_meta_matches() {
-    python3 - "$1" "$2" "$3" "$4" "$5" <<'PY'
+    python3 - "$1" "$2" "$3" "$4" "$5" "$6" <<'PY'
 import json
 import os
 import sys
 
-cache_dir, data_path, prompt, hidden_layer, max_tokens = sys.argv[1:]
+cache_dir, data_path, prompt, hidden_layer, max_tokens, model_source = sys.argv[1:]
 meta_path = os.path.join(cache_dir, "meta.json")
 if not os.path.exists(meta_path):
     print("False")
@@ -79,6 +79,7 @@ with open(meta_path, "r") as f:
 ok = (
     meta.get("data_path") == data_path
     and meta.get("description_prompt") == prompt
+    and meta.get("description_cache_model_source", "previous") == model_source
     and str(meta.get("description_hidden_layer")) == str(hidden_layer)
     and str(meta.get("description_max_tokens")) == str(max_tokens)
 )
@@ -110,6 +111,7 @@ DESCRIPTION_MAX_TOKENS=$(read_optional_config "$TRAIN_CONFIG" description_max_to
 DESCRIPTION_ALIGN_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_align_weight 1.0)
 DESCRIPTION_UTILITY_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_utility_weight 1.0)
 STANDARD_CE_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" standard_ce_weight 1.0)
+DESCRIPTION_CACHE_MODEL_SOURCE=$(read_optional_config "$TRAIN_CONFIG" description_cache_model_source "base")
 DESCRIPTION_CACHE_MAX_NEW_ENTRIES=$(read_optional_config "$TRAIN_CONFIG" description_cache_max_new_entries -1)
 SAVE_STEPS=$(read_optional_config "$TRAIN_CONFIG" save_steps 50000)
 MODEL_MAX_LENGTH=$(read_optional_config "$TRAIN_CONFIG" model_max_length 2048)
@@ -126,12 +128,13 @@ if [ "$PREVIOUS" != "$PREVIOUS_RAW" ]; then
 fi
 
 DEFAULT_CACHE_TAG=$(basename "$DATA_PATH" .json)
-DEFAULT_DESCRIPTION_CACHE_DIR="$PREVIOUS/reference_description_cache_${DEFAULT_CACHE_TAG}"
+DEFAULT_DESCRIPTION_CACHE_DIR="$PREVIOUS/reference_description_cache_${DESCRIPTION_CACHE_MODEL_SOURCE}_${DEFAULT_CACHE_TAG}"
 DESCRIPTION_CACHE_DIR="${DESCRIPTION_CACHE_DIR:-$(read_optional_config "$TRAIN_CONFIG" description_cache_dir "$DEFAULT_DESCRIPTION_CACHE_DIR")}"
 
 echo "Previous checkpoint: $PREVIOUS"
 echo "Output checkpoint: $OUTPUT_DIR"
 echo "Description cache dir: $DESCRIPTION_CACHE_DIR"
+echo "Description cache model source: $DESCRIPTION_CACHE_MODEL_SOURCE"
 
 EXPECTED_CACHE_ENTRIES=$(count_expected_cache_entries "$DATA_PATH")
 CACHE_READY=False
@@ -143,7 +146,8 @@ if [ -d "$DESCRIPTION_CACHE_DIR" ]; then
         "$DATA_PATH" \
         "$DESCRIPTION_PROMPT" \
         "$DESCRIPTION_HIDDEN_LAYER" \
-        "$DESCRIPTION_MAX_TOKENS")
+        "$DESCRIPTION_MAX_TOKENS" \
+        "$DESCRIPTION_CACHE_MODEL_SOURCE")
     if [ "$EXISTING_CACHE_ENTRIES" -ge "$EXPECTED_CACHE_ENTRIES" ] && [ "$EXPECTED_CACHE_ENTRIES" -gt 0 ] && [ "$CACHE_META_READY" = "True" ]; then
         CACHE_READY=True
     elif [ "$EXISTING_CACHE_ENTRIES" -gt 0 ]; then
@@ -218,6 +222,7 @@ if [ "$CACHE_READY" != "True" ]; then
         --lazy_preprocess True \
         --description_prompt "$DESCRIPTION_PROMPT" \
         --description_cache_dir "$DESCRIPTION_CACHE_DIR" \
+        --description_cache_model_source "$DESCRIPTION_CACHE_MODEL_SOURCE" \
         --description_cache_max_new_entries $DESCRIPTION_CACHE_MAX_NEW_ENTRIES \
         --description_hidden_layer $DESCRIPTION_HIDDEN_LAYER \
         --description_max_tokens $DESCRIPTION_MAX_TOKENS \
