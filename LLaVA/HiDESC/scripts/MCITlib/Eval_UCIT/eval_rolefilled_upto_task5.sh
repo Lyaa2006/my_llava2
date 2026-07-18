@@ -62,7 +62,7 @@ cfg = {
     "model_path": os.path.join(rolefilled_root, f"Task{task_id}_llava_lora"),
     "result_path": result_root,
     "text_tower": text_tower,
-    "num_task": task_id,
+    "num_task": 6,
 }
 with open(cfg_path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)

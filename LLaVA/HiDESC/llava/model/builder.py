@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 
+import json
 import os, sys
 import warnings
 import shutil
@@ -25,6 +26,41 @@ from llava.constants import DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, D
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+
+
+def _read_adapter_config(checkpoint_dir):
+    adapter_config_path = os.path.join(checkpoint_dir, "adapter_config.json")
+    if not os.path.isfile(adapter_config_path):
+        return {}
+    with open(adapter_config_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _infer_effective_num_task(checkpoint_dir, declared_num_task):
+    declared_num_task = max(1, int(declared_num_task))
+    if not checkpoint_dir or not os.path.isdir(checkpoint_dir):
+        return declared_num_task
+
+    adapter_config = _read_adapter_config(checkpoint_dir)
+    cur_task = adapter_config.get("cur_task")
+    if cur_task is not None:
+        try:
+            return max(1, min(int(cur_task) + 1, declared_num_task))
+        except (TypeError, ValueError):
+            pass
+
+    checkpoint_name = os.path.basename(os.path.normpath(checkpoint_dir))
+    if checkpoint_name.startswith("Task"):
+        digits = []
+        for ch in checkpoint_name[4:]:
+            if ch.isdigit():
+                digits.append(ch)
+            else:
+                break
+        if digits:
+            return max(1, min(int("".join(digits)), declared_num_task))
+
+    return declared_num_task
 
 def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, load_4bit=False, device_map="auto", device="cuda", num_task=10, text_tower=None, **kwargs):
     kwargs = {"device_map": device_map, **kwargs}
@@ -47,6 +83,7 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
         or any("llava" in arch for arch in architectures)
     )
     is_lora_checkpoint = has_lora_adapter and has_non_lora_weights
+    effective_num_task = _infer_effective_num_task(checkpoint_dir, num_task) if is_lora_checkpoint else int(num_task)
 
     if device != "cuda":
         kwargs['device_map'] = {"": device}
@@ -84,7 +121,11 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
 
             model.set_clip_tokenizer(clip_tokenizer)
             model.set_tokenizer(tokenizer)
-            model.set_eval(num_task)
+            model.set_eval(num_task, effective_num_task=effective_num_task)
+            print(
+                f"Eval task-space: declared_num_task={int(num_task)}, "
+                f"effective_num_task={effective_num_task} (from checkpoint cur_task)"
+            )
 
             token_num, tokem_dim = model.lm_head.out_features, model.lm_head.in_features
             if model.lm_head.weight.shape[0] != token_num:

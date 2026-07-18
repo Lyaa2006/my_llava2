@@ -45,6 +45,7 @@ log/
 data/
 datasets/
 dataset/
+MLLM/
 cache/
 outputs/
 output/

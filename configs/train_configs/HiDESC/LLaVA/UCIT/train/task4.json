@@ -7,7 +7,14 @@
   "epoch": 1,
   "batch_size": 2,
   "grad_acc": 8,
-  "lr": 2e-4,
+  "lr": 0.0002,
   "cur_task": 3,
+  "description_hidden_layer": -2,
+  "description_max_tokens": 32,
+  "description_focus_weight": 0.4,
+  "description_energy_weight": 0.001,
+  "description_energy_margin": 30.0,
+  "standard_ce_weight": 3.0,
+  "description_cache_model_source": "base",
   "description_cache_dir": "/mnt/lyaa/MCITlib/checkpoints/UCIT/LLaVA/HiDESC_from_HiDeTask1_g4b8ga2/description_caches/task4_iconqa"
 }

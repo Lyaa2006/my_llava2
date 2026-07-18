@@ -358,12 +358,23 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
         self.active_adapter = adapter_name
 
     def _get_active_route_weights(self, device, prefer_task_fuse=False):
+        source_weights = self.task_fuse_weight if prefer_task_fuse else self.expert_weight
         if self.training:
             active_experts = max(1, min(self.expert_num, self.cur_task + 1))
         else:
-            active_experts = max(1, int(self.expert_num))
-        source_weights = self.task_fuse_weight if prefer_task_fuse else self.expert_weight
-        route_weights = torch.as_tensor(source_weights[:active_experts], device=device, dtype=torch.float32)
+            if torch.is_tensor(source_weights):
+                source_count = int(source_weights.numel()) if source_weights.ndim > 0 else 1
+                source_slice = source_weights.reshape(-1)
+            else:
+                try:
+                    source_count = len(source_weights)
+                except TypeError:
+                    source_count = 1
+                source_slice = source_weights
+            active_experts = max(1, min(int(self.expert_num), int(source_count)))
+        if self.training:
+            source_slice = source_weights
+        route_weights = torch.as_tensor(source_slice[:active_experts], device=device, dtype=torch.float32)
         if route_weights.numel() != active_experts:
             route_weights = torch.ones(active_experts, device=device, dtype=torch.float32)
         route_weights = route_weights.clamp_min(0.0)

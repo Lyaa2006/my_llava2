@@ -25,8 +25,9 @@
 
 ## 4. ⼀句话概括你的 Idea
 
-针对上述问题，我们提出了一个统一的持续学习框架**Hi-DESC (Hierarchical Description-aligned Expert Collaborative Continual Learning)**，训练时通过description align loss和description utility loss保证各专家LoRA之间的语义一致性；前向推理时采用Role-aware Progressive Collaboration架构分层实现深层跨任务推理能力专家协同，以及浅层语言表达风格的任务差异化。
+针对上述问题，我们提出了一个统一的持续学习框架**Hi-DESC (Hierarchical Description-aligned Expert Collaborative Continual Learning)**。在训练阶段，Hi-DESC以固定的base model description cache作为跨任务共享语义锚点：在standard ce之外引入description focus loss和description energy loss，约束当前任务专家相对于base语义锚点的更新方式，从而维持各专家LoRA之间的语义一致性；前向推理时采用Role-aware Progressive Collaboration架构分层实现深层跨任务推理能力专家协同，以及浅层语言表达风格的任务差异化。
 
+核心假设：**持续学习过程中，关键语义token处更新幅度较大，其他模板词处更新幅度较小**
 
 ## 5. 实现这个 Idea 的挑战
 
@@ -40,7 +41,14 @@
 
 ## Motivation
 
-针对挑战1，我们提出了 HiDeCL (Hierarchical Description-based Continual Learning) 训练机制。在持续训练时，以上一任务训练完成时模型snapshot生成的description hidden state为基准，引入description align loss和description utility loss约束，实现各个专家LoRA之间的语义对齐，为各个专家之间的协同提供基础条件
+针对挑战1，我们提出了 HiDeCL (Hierarchical Description-based Continual Learning) 训练机制。从base model中抽取description hidden state作为所有后续任务共享的语义锚点。训练时，将当前模型在相同description输入上的hidden states与cache中的reference states进行对齐。这样做可以避免reference随任务推进不断漂移，使不同任务专家LoRA始终围绕同一个语义基准进行更新。
+
+在loss设计上，当前训练目标由三部分组成：
+
+1. `standard CE`：保证当前任务的主学习目标不被削弱。
+2. `description focus loss`：约束description空间中的变化应尽量集中在key tokens上，而不是无差别扩散到全部token，提升专家的学习指向性。
+3. `description energy loss`：约束description hidden states相对base reference的整体漂移幅度，避免新任务训练造成过强的全局偏移。
+
 
 ## 7. 为了解决挑战⼆，你提出了什么技术？描述这个技术的
 
@@ -56,8 +64,8 @@
 
 ## 8. 总结
 
-1. 本研究的主要贡献在于：通过description统一各个任务专家LoRA之间的语义空间，通过动态latent role的维护，解决了之前方法中专家LoRA“排他性”，无法协同工作的问题。
+1. 本研究的主要贡献在于：通过约束description 更新位置各个任务专家LoRA之间的语义空间，并结合动态latent role的维护，解决了之前方法中专家LoRA“排他性”过强、难以协同工作的问题。
 
-2. 我们的创新点在于：通过HiDECL语义对齐和层级推理架构，首次实现了对分布式存储的历史专家能力的精准调用。  
+2. 我们的创新点在于：通过base-anchored HiDeCL训练机制和层级推理架构，实现了训练阶段的跨任务语义可比性维护，以及推理阶段对分布式存储历史专家能力的精准调用。  
 
 3. 未来，我们计划通过精细化description的保存形式，提升description cache的生成效率和空间储存效率。

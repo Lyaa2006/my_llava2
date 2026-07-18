@@ -53,6 +53,8 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self.training = False
         self.cur_task = 0
         self.expert_num = 8
+        self.declared_expert_num = self.expert_num
+        self.effective_expert_num = self.expert_num
         self.max_task_slots = 10
         self.max_role_slots = self.max_task_slots
 
@@ -118,6 +120,8 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     def set_cur_task(self, cur_task, expert_num):
         self.cur_task = cur_task
         self.expert_num = expert_num
+        self.declared_expert_num = expert_num
+        self.effective_expert_num = expert_num
 
         for name, param in self.image_anchors.named_parameters():
             param.requires_grad = True
@@ -159,8 +163,12 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 continue
             self.relation_routing_config[key] = value
 
-    def set_eval(self, num_task, eval_task_id=None):
-        self.expert_num = int(num_task)
+    def set_eval(self, num_task, eval_task_id=None, effective_num_task=None):
+        self.declared_expert_num = int(num_task)
+        if effective_num_task is None:
+            effective_num_task = self.declared_expert_num
+        self.effective_expert_num = max(1, min(int(effective_num_task), self.max_task_slots))
+        self.expert_num = self.effective_expert_num
         if eval_task_id is None:
             self.cur_task = max(0, self.expert_num - 1)
         else:

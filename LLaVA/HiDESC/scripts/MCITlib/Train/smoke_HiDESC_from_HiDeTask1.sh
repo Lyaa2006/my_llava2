@@ -99,7 +99,7 @@ for tid in range(1, 7):
         "model_path": os.path.join(run_root, f"Task{tid}_llava_lora"),
         "result_path": result_root,
         "text_tower": "/mnt/lyaa/my_llava/clip-vit-large-patch14-336",
-        "num_task": tid,
+        "num_task": 6,
     }
     with open(os.path.join(cfg_root, f"eval_task{tid}.json"), "w") as f:
         json.dump(eval_cfg, f, indent=2)
