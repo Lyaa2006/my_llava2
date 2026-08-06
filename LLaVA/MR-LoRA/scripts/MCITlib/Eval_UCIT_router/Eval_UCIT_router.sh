@@ -1,7 +1,7 @@
 # #!/bin/bash
 
 TASK_ID=$1
-HARD_PATH=/your_path/MCITlib_v3
+HARD_PATH=${HARD_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../.." && pwd)}
 
 if [ "$TASK_ID" == "1" ]; then
     bash scripts/MCITlib/Eval_UCIT_router/eval_imagenet.sh $HARD_PATH/configs/model_configs/llava.json $HARD_PATH/configs/data_configs/UCIT/ImageNet-R.json $HARD_PATH/configs/train_configs/MR-LoRA/LLaVA/UCIT/eval_router/task1.json

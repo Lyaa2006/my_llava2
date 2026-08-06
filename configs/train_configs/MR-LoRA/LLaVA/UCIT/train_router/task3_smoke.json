@@ -1,0 +1,14 @@
+{
+  "gpu_num": 4,
+  "rank": 16,
+  "previous_model": "/mnt/lyaa/MCITlib/checkpoints/UCIT/LLaVA/MR-LoRA/smoke/Router_task2_llava_lora",
+  "output_dir": "/mnt/lyaa/MCITlib/checkpoints/UCIT/LLaVA/MR-LoRA/smoke/Router_task3_llava_lora",
+  "epoch": 1,
+  "batch_size": 1,
+  "grad_acc": 1,
+  "lr": 2e-4,
+  "max_steps": 1,
+  "save_steps": 1,
+  "model_max_length": 1024,
+  "dataloader_num_workers": 0
+}

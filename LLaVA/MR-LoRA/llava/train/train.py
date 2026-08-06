@@ -26,7 +26,10 @@ import torch
 import sys
 import transformers
 import subprocess
-sys.path.append('/your_path/MCITlib_v3/LLaVA/MR-LoRA')
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 from llava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 from peft.utils import WEIGHTS_NAME, set_peft_model_state_dict
@@ -47,6 +50,16 @@ local_rank = None
 def rank0_print(*args):
     if local_rank == 0:
         print(*args)
+
+
+def _is_local_model_path(model_name_or_path: Optional[str]) -> bool:
+    return bool(model_name_or_path) and os.path.exists(model_name_or_path)
+
+
+def _build_local_pretrained_kwargs(model_name_or_path: Optional[str]) -> Dict:
+    if _is_local_model_path(model_name_or_path):
+        return {"local_files_only": True}
+    return {}
 
 
 @dataclass
@@ -859,26 +872,44 @@ def train():
             )
         ))
 
+    model_local_kwargs = _build_local_pretrained_kwargs(model_args.model_name_or_path)
+
     if model_args.vision_tower is not None:
         if 'mpt' in model_args.model_name_or_path:
-            config = transformers.AutoConfig.from_pretrained(model_args.model_name_or_path, trust_remote_code=True)
+            config = transformers.AutoConfig.from_pretrained(
+                model_args.model_name_or_path,
+                trust_remote_code=True,
+                cache_dir=training_args.cache_dir,
+                **model_local_kwargs,
+            )
             config.attn_config['attn_impl'] = training_args.mpt_attn_impl
+            config.mm_vision_tower = model_args.vision_tower
             model = LlavaMPTForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
                 config=config,
                 cache_dir=training_args.cache_dir,
+                **model_local_kwargs,
                 **bnb_model_from_pretrained_args
             )
         else:
-            model = LlavaLlamaForCausalLM.from_pretrained(
+            config = transformers.AutoConfig.from_pretrained(
                 model_args.model_name_or_path,
                 cache_dir=training_args.cache_dir,
+                **model_local_kwargs,
+            )
+            config.mm_vision_tower = model_args.vision_tower
+            model = LlavaLlamaForCausalLM.from_pretrained(
+                model_args.model_name_or_path,
+                config=config,
+                cache_dir=training_args.cache_dir,
+                **model_local_kwargs,
                 **bnb_model_from_pretrained_args,
             )
     else:
         model = transformers.LlamaForCausalLM.from_pretrained(
             model_args.model_name_or_path,
             cache_dir=training_args.cache_dir,
+            **model_local_kwargs,
             **bnb_model_from_pretrained_args
         )
     model.config.use_cache = False
@@ -922,7 +953,8 @@ def train():
             model_args.model_name_or_path,
             cache_dir=training_args.cache_dir,
             model_max_length=training_args.model_max_length,
-            padding_side="right"
+            padding_side="right",
+            **model_local_kwargs,
         )
     else:
         tokenizer = transformers.AutoTokenizer.from_pretrained(
@@ -931,6 +963,7 @@ def train():
             model_max_length=training_args.model_max_length,
             padding_side="right",
             use_fast=True,
+            **model_local_kwargs,
         )
 
     if model_args.version == "v0":

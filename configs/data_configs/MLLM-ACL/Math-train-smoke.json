@@ -1,0 +1,16 @@
+[
+  {
+    "image": "images/mavis_math_metagen/train/71952.png",
+    "question_id": "mavis_math_metagen71952",
+    "conversations": [
+      {
+        "from": "human",
+        "value": "<image>\nAccording to the question shown in the image, please first perform reasoning, then finally select the right answer from the choices, e.g., Answer: xxx.\nQuestion: If the central angle is half of 48 degrees, does y equal 24?\nChoices:\nA. Yes\nB. No"
+      },
+      {
+        "from": "gpt",
+        "value": "The measure of y is the same as its central angle. Halving the central angle to 24 degrees results in y being 24. So the answer is A\nAnswer: A"
+      }
+    ]
+  }
+]

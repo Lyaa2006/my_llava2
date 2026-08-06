@@ -1,0 +1,6 @@
+{
+  "train_path": "/mnt/lyaa/MCITlib/configs/data_configs/MLLM-ACL/APP-train-smoke.json",
+  "test_path": "/mnt/lyaa/MCITlib/configs/data_configs/MLLM-ACL/APP-test-smoke.json",
+  "train_folder": "/mnt/lyaa/MCITlib/MLLM/ability/APP",
+  "test_folder": "/mnt/lyaa/MCITlib/MLLM/ability/APP_test"
+}

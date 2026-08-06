@@ -1,5 +1,5 @@
 {
-  "gpu_num": 2,
+  "gpu_num": 4,
   "stage": "zero-shot",
   "model_path": "/your_model_path/InternVL-Chat-ViT-6B-Vicuna-7B",
   "result_path": "./results/UCIT/each_dataset"

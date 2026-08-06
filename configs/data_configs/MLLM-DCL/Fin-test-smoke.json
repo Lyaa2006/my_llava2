@@ -1,0 +1,11 @@
+[
+  {
+    "question_id": "financial/test/65439.png",
+    "image": "images/test/65439.png",
+    "question_type": "choice",
+    "category": "Trend analysis",
+    "difficulty": "medium",
+    "text": "Based on the chart, which statement best describes the price trend from mid-September (around Sep 12) to late October? A. The price showed a gradual recovery, rising from a low near 7.5 to around 10. B. The price remained relatively stable, fluctuating narrowly between 11 and 12. C. The price experienced a sharp decline from approximately 13 to 8. D. The price volatility increased significantly, reaching a new all-time high above 13.",
+    "answer": "A"
+  }
+]

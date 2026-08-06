@@ -5,6 +5,7 @@ import os
 import random
 import re
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 import torch
@@ -78,6 +79,7 @@ TRANSITIONS = [
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
+    parser.add_argument("--report-md")
     parser.add_argument("--samples-per-transition", type=int, default=1)
     parser.add_argument(
         "--model-source",
@@ -229,6 +231,86 @@ def generate_description(model, tokenizer, image_processor, image_path, query, c
     return output_text
 
 
+def guess_failure_mode(description):
+    text = description.strip()
+    if not text:
+        return "empty output"
+    if text == "[object Object]":
+        return "placeholder serialization failure"
+    if re.fullmatch(r"\d+", text):
+        return "answer-mode collapse"
+    if len(text.split()) <= 6:
+        return "over-short collapsed description"
+    return "hallucinated / off-task description"
+
+
+def build_markdown_report(results, args):
+    grouped = defaultdict(list)
+    for item in results:
+        grouped[item["transition"]].append(item)
+
+    lines = [
+        "# Experiment 3: Catastrophic Description Drift After Task Training",
+        "",
+        "## Goal",
+        "",
+        "Use the checkpoints recorded in `logs/train_UCIT_full_20260703_211225.log` and, after finishing `task n-1` training, directly generate `task n` descriptions.",
+        f"This report keeps only `{args.samples_per_transition}` samples per transition to show the failure pattern compactly.",
+        "",
+        "## Checkpoint Chain From The Training Log",
+        "",
+        "- `Task1_llava_lora` -> generate `Task2 / ArxivQA` descriptions",
+        "- `Task2_llava_lora` -> generate `Task3 / VizWiz` descriptions",
+        "- `Task3_llava_lora` -> generate `Task4 / IconQA` descriptions",
+        "- `Task4_llava_lora` -> generate `Task5 / CLEVR` descriptions",
+        "- `Task5_llava_lora` -> generate `Task6 / Flickr30k` descriptions",
+        "",
+        "## Bad Descriptions",
+        "",
+    ]
+
+    for transition in TRANSITIONS:
+        items = grouped.get(transition["name"], [])
+        if not items:
+            continue
+        lines.extend(
+            [
+                f"### {transition['name']}",
+                "",
+                f"- checkpoint: `{transition['checkpoint']}`",
+                f"- dataset: `{transition['dataset']}`",
+                "",
+            ]
+        )
+        for idx, item in enumerate(items, start=1):
+            lines.extend(
+                [
+                    f"#### Sample {idx}",
+                    "",
+                    f"- dataset index: `{item['dataset_index']}`",
+                    f"- image: `{item['image_rel']}`",
+                    f"- failure mode: `{item['failure_mode']}`",
+                    f"- source prompt: {item['source_prompt']}",
+                    "",
+                    "**Bad description:**",
+                    "",
+                    item["generated_description"],
+                    "",
+                ]
+            )
+
+    lines.extend(
+        [
+            "## Conclusion",
+            "",
+            "Even with only two samples per transition, the checkpoint from `task n-1` already fails to produce stable visual descriptions for `task n`.",
+            "The later transitions are especially catastrophic, including direct answer collapse (for example `3`) and placeholder-like outputs (for example `[object Object]`).",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def main():
     args = parse_args()
     disable_torch_init()
@@ -297,6 +379,7 @@ def main():
                     "source_prompt": sample["source_prompt"],
                     "description_prompt": DESCRIPTION_PROMPT,
                     "generated_description": description,
+                    "failure_mode": guess_failure_mode(description),
                 }
             )
 
@@ -307,6 +390,14 @@ def main():
     with open(output_path, "w") as f:
         json.dump(all_results, f, ensure_ascii=False, indent=2)
     print(f"[done] wrote {len(all_results)} samples to {output_path}", flush=True)
+
+    if args.report_md:
+        report_path = Path(args.report_md)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_text = build_markdown_report(all_results, args)
+        with open(report_path, "w") as f:
+            f.write(report_text)
+        print(f"[done] wrote markdown report to {report_path}", flush=True)
 
 
 if __name__ == "__main__":

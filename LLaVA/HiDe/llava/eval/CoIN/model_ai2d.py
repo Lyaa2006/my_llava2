@@ -100,17 +100,28 @@ def eval_model(args):
         keywords = [stop_str] # [</s>]
         stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
         
-        with torch.inference_mode():
-            output_ids = model.generate(
-                input_ids,
-                images=image_tensor.to(dtype=torch.float16, device='cuda', non_blocking=True),
-                do_sample=True if args.temperature > 0 else False,
-                temperature=args.temperature,
-                top_p=args.top_p,
-                num_beams=args.num_beams,
-                max_new_tokens=args.max_new_tokens,
-                stopping_criteria=[stopping_criteria],
-                use_cache=True)
+        try:
+            with torch.inference_mode():
+                output_ids = model.generate(
+                    input_ids,
+                    images=image_tensor.to(dtype=torch.float16, device='cuda', non_blocking=True),
+                    do_sample=True if args.temperature > 0 else False,
+                    temperature=args.temperature,
+                    top_p=args.top_p,
+                    num_beams=args.num_beams,
+                    max_new_tokens=args.max_new_tokens,
+                    stopping_criteria=[stopping_criteria],
+                    use_cache=True)
+        except torch.cuda.OutOfMemoryError as exc:
+            print(f"[skip-oom] question_id={idx} image={line.get('image')} reason={exc}", flush=True)
+            torch.cuda.empty_cache()
+            continue
+        except RuntimeError as exc:
+            if "out of memory" not in str(exc).lower():
+                raise
+            print(f"[skip-oom] question_id={idx} image={line.get('image')} reason={exc}", flush=True)
+            torch.cuda.empty_cache()
+            continue
 
         input_token_len = input_ids.shape[1]
         n_diff_input_output = (input_ids != output_ids[:, :input_token_len]).sum().item()
@@ -126,7 +137,7 @@ def eval_model(args):
                                    "answer_id": ans_id,
                                    "model_id": model_name,
                                    "metadata": {}}) + "\n")
-        # ans_file.flush()
+        ans_file.flush()
     ans_file.close()
 
 if __name__ == "__main__":

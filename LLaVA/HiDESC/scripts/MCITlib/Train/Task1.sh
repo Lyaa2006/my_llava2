@@ -2,6 +2,9 @@
 set -e
 
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(realpath "$SCRIPT_DIR/../../..")"
+
+cd "$PROJECT_ROOT"
 
 ################## VICUNA ##################
 PROMPT_VERSION=v1
@@ -109,6 +112,9 @@ DESCRIPTION_MAX_TOKENS=$(read_optional_config "$TRAIN_CONFIG" description_max_to
 DESCRIPTION_FOCUS_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_focus_weight 0.2)
 DESCRIPTION_ENERGY_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_energy_weight 1e-4)
 DESCRIPTION_ENERGY_MARGIN=$(read_optional_config "$TRAIN_CONFIG" description_energy_margin 30.0)
+ENABLE_BOUNDARY_ALIGN=$(read_optional_config "$TRAIN_CONFIG" enable_boundary_align False)
+ALIGN_BOUNDARY_LAYER=$(read_optional_config "$TRAIN_CONFIG" align_boundary_layer 15)
+ALIGN_LOSS_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" align_loss_weight 0.01)
 STANDARD_CE_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" standard_ce_weight 1.0)
 DESCRIPTION_CACHE_MODEL_SOURCE=$(read_optional_config "$TRAIN_CONFIG" description_cache_model_source "base")
 DESCRIPTION_CACHE_MAX_NEW_ENTRIES=$(read_optional_config "$TRAIN_CONFIG" description_cache_max_new_entries -1)
@@ -263,6 +269,9 @@ fi
     --description_focus_weight $DESCRIPTION_FOCUS_WEIGHT \
     --description_energy_weight $DESCRIPTION_ENERGY_WEIGHT \
     --description_energy_margin $DESCRIPTION_ENERGY_MARGIN \
+    --enable_boundary_align $ENABLE_BOUNDARY_ALIGN \
+    --align_boundary_layer $ALIGN_BOUNDARY_LAYER \
+    --align_loss_weight $ALIGN_LOSS_WEIGHT \
     --standard_ce_weight $STANDARD_CE_WEIGHT \
     --report_to none \
     $EXTRA_ARGS

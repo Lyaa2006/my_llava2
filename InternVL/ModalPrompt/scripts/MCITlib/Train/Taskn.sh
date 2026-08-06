@@ -1,5 +1,6 @@
 #!/bin/bash
 
+set -euo pipefail
 set -x
 
 ################## VICUNA ##################
@@ -9,6 +10,7 @@ PROMPT_VERSION=v1
 MODEL_CONFIG=$1
 DATA_CONFIG=$2
 TRAIN_CONFIG=$3
+DEEPSPEED_CONFIG=${MCIT_DEEPSPEED_CONFIG:-}
 
 read_config() {
     python3 -c "import json; print(json.load(open('$1'))['$2'])"
@@ -31,6 +33,16 @@ BATCH_SIZE=$(read_config "$TRAIN_CONFIG" batch_size)
 GRAD_ACC=$(read_config "$TRAIN_CONFIG" grad_acc)
 LR=$(read_config "$TRAIN_CONFIG" lr)
 
+mkdir -p "$OUTPUT_DIR"
+
+if [ -z "$DEEPSPEED_CONFIG" ]; then
+    if [ "${MCIT_USE_SMOKE:-0}" = "1" ]; then
+        DEEPSPEED_CONFIG=./scripts/zero3.json
+    else
+        DEEPSPEED_CONFIG=./scripts/zero3_offload.json
+    fi
+fi
+
 GPU_LIST=""
 for i in $(seq 0 $((GPU_NUM-1))); do
     GPU_LIST+="$i,"
@@ -39,8 +51,8 @@ GPU_LIST=${GPU_LIST%,}
 
 echo "Begin running..."
 torchrun --nnodes=${NNODES} --nproc_per_node=${GPU_NUM} --master_port 12736 llava/train/train_mem.py \
-    --deepspeed ./scripts/zero3_offload.json \
-    --lora_enable False --pt_enable True \
+    --deepspeed ${DEEPSPEED_CONFIG} \
+    --lora_enable False --mm_projector_lr 2e-5 --pt_enable True \
     --model_name_or_path $MODEL_NAME \
     --previous_task_model_path $PREVIOUS \
     --version $PROMPT_VERSION \

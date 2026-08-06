@@ -461,9 +461,9 @@ class HiDeMOELinearA(nn.Module):
         else:
             merge_weight = 1.0
             if int(self.layer) != 31:
-                temp_mlp = nn.Linear(self.in_features, self.r, bias=False).to(x.device)
+                temp_mlp = nn.Linear(self.in_features, self.r, bias=False).to(device=x.device, dtype=x.dtype)
                 
-                fused_weight = torch.zeros((self.r, self.in_features), device=x.device)
+                fused_weight = torch.zeros((self.r, self.in_features), device=x.device, dtype=x.dtype)
             
                 for i in range(self.cur_task + 1):
                     fused_weight += merge_weight * self.loraA[i].weight
@@ -513,9 +513,9 @@ class HiDeMOELinearB(nn.Module):
         else:
             merge_weight = 1.0
             if int(self.layer) != 31:
-                temp_mlp = nn.Linear(self.r, self.out_features, bias=False).to(x.device)
+                temp_mlp = nn.Linear(self.r, self.out_features, bias=False).to(device=x.device, dtype=x.dtype)
                 
-                fused_weight = torch.zeros((self.out_features, self.r), device=x.device)
+                fused_weight = torch.zeros((self.out_features, self.r), device=x.device, dtype=x.dtype)
             
                 for i in range(self.cur_task + 1):
                     fused_weight += merge_weight * self.loraB[i].weight

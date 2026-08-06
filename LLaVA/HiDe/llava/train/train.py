@@ -24,8 +24,12 @@ from typing import Dict, Optional, Sequence, List
 
 import torch
 import sys
-sys.path.append('/your_path/MCITlib_v3/LLaVA/HiDe')
+from pathlib import Path
 import transformers
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from llava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 from peft.utils import WEIGHTS_NAME, set_peft_model_state_dict
@@ -40,6 +44,38 @@ from PIL import Image, ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 local_rank = None
+
+
+def _hf_local_only_kwargs(model_name_or_path):
+    if isinstance(model_name_or_path, str) and os.path.exists(model_name_or_path):
+        return {"local_files_only": True}
+    return {}
+
+
+def _prepare_local_mm_config(model_args, training_args):
+    config_kwargs = {
+        "cache_dir": training_args.cache_dir,
+        **_hf_local_only_kwargs(model_args.model_name_or_path),
+    }
+    if 'mpt' in model_args.model_name_or_path:
+        config_kwargs["trust_remote_code"] = True
+    config = transformers.AutoConfig.from_pretrained(
+        model_args.model_name_or_path,
+        **config_kwargs,
+    )
+    if getattr(model_args, "vision_tower", None):
+        config.mm_vision_tower = model_args.vision_tower
+        config.vision_tower = model_args.vision_tower
+    if getattr(model_args, "text_tower", None):
+        config.mm_text_tower = model_args.text_tower
+        config.text_tower = model_args.text_tower
+    config.mm_vision_select_layer = getattr(model_args, "mm_vision_select_layer", getattr(config, "mm_vision_select_layer", -1))
+    config.mm_text_select_layer = getattr(model_args, "mm_text_select_layer", getattr(config, "mm_text_select_layer", -1))
+    config.mm_vision_select_feature = getattr(model_args, "mm_vision_select_feature", getattr(config, "mm_vision_select_feature", "patch"))
+    config.mm_projector_type = getattr(model_args, "mm_projector_type", getattr(config, "mm_projector_type", "linear"))
+    config.mm_use_im_start_end = getattr(model_args, "mm_use_im_start_end", getattr(config, "mm_use_im_start_end", False))
+    config.mm_use_im_patch_token = getattr(model_args, "mm_use_im_patch_token", getattr(config, "mm_use_im_patch_token", True))
+    return config
 
 
 def rank0_print(*args):
@@ -840,7 +876,7 @@ def train():
 
     if model_args.vision_tower is not None:
         if 'mpt' in model_args.model_name_or_path:
-            config = transformers.AutoConfig.from_pretrained(model_args.model_name_or_path, trust_remote_code=True)
+            config = _prepare_local_mm_config(model_args, training_args)
             config.attn_config['attn_impl'] = training_args.mpt_attn_impl
             model = LlavaMPTForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
@@ -849,8 +885,10 @@ def train():
                 **bnb_model_from_pretrained_args
             )
         else:
+            config = _prepare_local_mm_config(model_args, training_args)
             model = LlavaLlamaForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
+                config=config,
                 cache_dir=training_args.cache_dir,
                 **bnb_model_from_pretrained_args,
             )

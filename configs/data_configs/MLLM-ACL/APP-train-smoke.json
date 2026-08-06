@@ -1,0 +1,16 @@
+[
+  {
+    "image": "images/datikz_start0_640_1280_1280_crop.png",
+    "conversations": [
+      {
+        "from": "human",
+        "value": "<image>\nGiven the element description Categories\u00a0&\u00a0Topics, predict the bounding box coordinates for the UI element in the webpage screenshot. The format should be (top-left x, top-left y, bottom-right x, bottom-right y), and the values should be between 0 and 1."
+      },
+      {
+        "from": "gpt",
+        "value": "[0.009, 0.064, 0.12, 0.091]"
+      }
+    ],
+    "question_id": "datikz_v4_50K_6_curated_v2_element_ground_bbox_74029"
+  }
+]

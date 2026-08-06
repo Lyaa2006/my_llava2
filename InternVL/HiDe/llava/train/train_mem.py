@@ -8,7 +8,11 @@
 # replace_llama_attn_with_flash_attn()
 
 import sys
-sys.path.append('/your_path/MCITlib_v3/InternVL/HiDe')
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
 from llava.train.train import train
 
 if __name__ == "__main__":

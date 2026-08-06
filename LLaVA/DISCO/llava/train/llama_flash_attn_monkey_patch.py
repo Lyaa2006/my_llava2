@@ -12,6 +12,35 @@ except ImportError:
     from flash_attn.flash_attn_interface import flash_attn_varlen_qkvpacked_func as flash_attn_unpadded_qkvpacked_func
 from flash_attn.bert_padding import unpad_input, pad_input
 
+_ORIGINAL_LLAMA_ATTENTION_FORWARD = transformers.models.llama.modeling_llama.LlamaAttention.forward
+_ORIGINAL_PREPARE_DECODER_ATTENTION_MASK = (
+    transformers.models.llama.modeling_llama.LlamaModel._prepare_decoder_attention_mask
+)
+
+
+def _build_standard_causal_mask(attention_mask, hidden_states, q_len, kv_seq_len):
+    bsz = hidden_states.shape[0]
+    dtype = hidden_states.dtype
+    device = hidden_states.device
+
+    min_value = torch.finfo(dtype).min
+    causal_mask = torch.full((q_len, kv_seq_len), min_value, dtype=dtype, device=device)
+    causal_mask = torch.triu(causal_mask, diagonal=1)
+    causal_mask = causal_mask.unsqueeze(0).unsqueeze(0).expand(bsz, 1, q_len, kv_seq_len)
+
+    if attention_mask is None:
+        return causal_mask
+
+    if attention_mask.dim() == 4:
+        return attention_mask
+
+    if attention_mask.dim() != 2:
+        raise ValueError(f"Unsupported attention_mask dim for fallback: {attention_mask.dim()}")
+
+    key_padding_mask = attention_mask[:, None, None, :kv_seq_len].to(dtype=dtype)
+    key_padding_mask = (1.0 - key_padding_mask) * min_value
+    return causal_mask + key_padding_mask
+
 
 def forward(
     self,
@@ -49,6 +78,22 @@ def forward(
     if past_key_value is not None:
         kv_seq_len += past_key_value[0].shape[-2]
 
+    # flash-attn varlen is unstable in the current environment when a padding mask is present.
+    # Fall back to the stock attention path in that case.
+    if attention_mask is not None and not torch.all(attention_mask):
+        standard_attention_mask = _build_standard_causal_mask(
+            attention_mask, hidden_states, q_len, kv_seq_len
+        )
+        return _ORIGINAL_LLAMA_ATTENTION_FORWARD(
+            self,
+            hidden_states=hidden_states,
+            attention_mask=standard_attention_mask,
+            position_ids=position_ids,
+            past_key_value=past_key_value,
+            output_attentions=output_attentions,
+            use_cache=use_cache,
+        )
+
     cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
     query_states, key_states = apply_rotary_pos_emb(
         query_states, key_states, cos, sin, position_ids
@@ -69,6 +114,12 @@ def forward(
     qkv = torch.stack([query_states, key_states, value_states], dim=2)
     qkv = qkv.transpose(1, 3)  # shape: [b, s, 3, num_heads, head_dim]
     key_padding_mask = attention_mask
+
+    # For batch size 1 smoke runs we often have no real padding at all.
+    # In that case the varlen path is unnecessary and can trip version-specific
+    # flash-attn bugs around cu_seqlens validation.
+    if key_padding_mask is not None and torch.all(key_padding_mask):
+        key_padding_mask = None
 
     if key_padding_mask is None:
         qkv = qkv.reshape(-1, 3, self.num_heads, self.head_dim)

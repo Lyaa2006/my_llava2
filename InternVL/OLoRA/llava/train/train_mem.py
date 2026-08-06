@@ -6,8 +6,13 @@
 # from llava.train.llama_flash_attn_monkey_patch import replace_llama_attn_with_flash_attn
 
 # replace_llama_attn_with_flash_attn()
+import os
 import sys
-sys.path.append('/your_path/MCITlib_v3/InternVL/OLoRA')
+
+CURRENT_METHOD_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if CURRENT_METHOD_ROOT not in sys.path:
+    sys.path.insert(0, CURRENT_METHOD_ROOT)
+
 from llava.train.train import train
 
 if __name__ == "__main__":

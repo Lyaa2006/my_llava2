@@ -7,7 +7,10 @@
 
 # replace_llama_attn_with_flash_attn()
 import sys
-sys.path.append('/your_path/MCITlib_v3/InternVL/LoRA-FT')
+from pathlib import Path
+
+# Keep imports stable when training is launched from any working directory.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from llava.train.train import train
 
 if __name__ == "__main__":

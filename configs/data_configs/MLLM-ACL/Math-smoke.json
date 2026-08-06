@@ -1,0 +1,6 @@
+{
+  "train_path": "/mnt/lyaa/MCITlib/configs/data_configs/MLLM-ACL/Math-train-smoke.json",
+  "test_path": "/mnt/lyaa/MCITlib/configs/data_configs/MLLM-ACL/Math-test-smoke.json",
+  "train_folder": "/mnt/lyaa/MCITlib/MLLM/ability/Math",
+  "test_folder": "/mnt/lyaa/MCITlib/MLLM/ability/Math_test"
+}

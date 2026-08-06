@@ -1,0 +1,6 @@
+{
+  "gpu_num": 4,
+  "stage": "LoRA-FT-task5-smoke",
+  "model_path": "/mnt/lyaa/MCITlib/checkpoints/UCIT/InternVL/LoRA-FT/smoke/Task5_internvl_lora",
+  "result_path": "/mnt/lyaa/MCITlib/results/UCIT/each_dataset_smoke"
+}

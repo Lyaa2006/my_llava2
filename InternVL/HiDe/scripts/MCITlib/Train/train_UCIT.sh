@@ -1,45 +1,62 @@
 #!/bin/bash
 
-HARD_PATH=/your_path/MCITlib_v3
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+HARD_PATH=$(cd "${SCRIPT_DIR}/../../../../.." && pwd)
+LOG_ROOT=${MCIT_LOG_ROOT:-$HARD_PATH/logs/InternVL/HiDe}
+mkdir -p "$LOG_ROOT/wrappers"
 
-pip install -e .
+TRAIN_SUFFIX=""
+DATA_SUFFIX=""
+if [ "${MCIT_USE_SMOKE:-0}" = "1" ]; then
+    TRAIN_SUFFIX="_smoke"
+    DATA_SUFFIX="-smoke"
+fi
+
+maybe_eval() {
+    if [ "${MCIT_SKIP_EVAL:-0}" = "1" ]; then
+        return 0
+    fi
+    bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh "$1"
+}
+
 bash scripts/MCITlib/Train/Task1.sh \
     $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/UCIT/ImageNet-R.json \
-    $HARD_PATH/configs/train_configs/HiDe/InternVL/UCIT/train/task1.json
-bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 1
+    $HARD_PATH/configs/data_configs/UCIT/ImageNet-R${DATA_SUFFIX}.json \
+    $HARD_PATH/configs/train_configs/HiDe/InternVL/UCIT/train/task1${TRAIN_SUFFIX}.json \
+    2>&1 | tee "$LOG_ROOT/wrappers/train_UCIT_task1${TRAIN_SUFFIX}.log"
+maybe_eval 1
 
-pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
     $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/UCIT/ArxivQA.json \
-    $HARD_PATH/configs/train_configs/HiDe/InternVL/UCIT/train/task2.json
-bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 2
+    $HARD_PATH/configs/data_configs/UCIT/ArxivQA${DATA_SUFFIX}.json \
+    $HARD_PATH/configs/train_configs/HiDe/InternVL/UCIT/train/task2${TRAIN_SUFFIX}.json \
+    2>&1 | tee "$LOG_ROOT/wrappers/train_UCIT_task2${TRAIN_SUFFIX}.log"
+maybe_eval 2
 
-pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
     $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/UCIT/VizWiz.json \
-    $HARD_PATH/configs/train_configs/HiDe/InternVL/UCIT/train/task3.json
-bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 3
+    $HARD_PATH/configs/data_configs/UCIT/VizWiz${DATA_SUFFIX}.json \
+    $HARD_PATH/configs/train_configs/HiDe/InternVL/UCIT/train/task3${TRAIN_SUFFIX}.json \
+    2>&1 | tee "$LOG_ROOT/wrappers/train_UCIT_task3${TRAIN_SUFFIX}.log"
+maybe_eval 3
 
-pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
     $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/UCIT/IconQA.json \
-    $HARD_PATH/configs/train_configs/HiDe/InternVL/UCIT/train/task4.json
-bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 4
+    $HARD_PATH/configs/data_configs/UCIT/IconQA${DATA_SUFFIX}.json \
+    $HARD_PATH/configs/train_configs/HiDe/InternVL/UCIT/train/task4${TRAIN_SUFFIX}.json \
+    2>&1 | tee "$LOG_ROOT/wrappers/train_UCIT_task4${TRAIN_SUFFIX}.log"
+maybe_eval 4
 
-pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
     $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/UCIT/CLEVR-Math.json \
-    $HARD_PATH/configs/train_configs/HiDe/InternVL/UCIT/train/task5.json
-bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 5
+    $HARD_PATH/configs/data_configs/UCIT/CLEVR-Math${DATA_SUFFIX}.json \
+    $HARD_PATH/configs/train_configs/HiDe/InternVL/UCIT/train/task5${TRAIN_SUFFIX}.json \
+    2>&1 | tee "$LOG_ROOT/wrappers/train_UCIT_task5${TRAIN_SUFFIX}.log"
+maybe_eval 5
 
-pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
     $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/UCIT/Flickr30k.json \
-    $HARD_PATH/configs/train_configs/HiDe/InternVL/UCIT/train/task6.json
-bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 6
+    $HARD_PATH/configs/data_configs/UCIT/Flickr30k${DATA_SUFFIX}.json \
+    $HARD_PATH/configs/train_configs/HiDe/InternVL/UCIT/train/task6${TRAIN_SUFFIX}.json \
+    2>&1 | tee "$LOG_ROOT/wrappers/train_UCIT_task6${TRAIN_SUFFIX}.log"
+maybe_eval 6

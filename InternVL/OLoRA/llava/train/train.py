@@ -13,9 +13,12 @@
 #    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
-import sys
-sys.path.append('/your_path/MCITlib_v3/InternVL/OLoRA')
 import os
+import sys
+
+CURRENT_METHOD_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if CURRENT_METHOD_ROOT not in sys.path:
+    sys.path.insert(0, CURRENT_METHOD_ROOT)
 import copy
 from dataclasses import dataclass, field
 import json

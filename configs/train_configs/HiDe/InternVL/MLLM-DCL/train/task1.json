@@ -2,7 +2,7 @@
   "gpu_num": 2,
   "rank": 160,
   "expert_num": 5,
-  "output_dir": "/your_ckpts_path/MCITlib/MLLM-DCL/InternVL/HiDe/Task1_internvl_lora",
+  "output_dir": "/mnt/lyaa/MCITlib/checkpoints/MLLM-DCL/InternVL/HiDe/Task1_internvl_lora",
   "cur_task": 0,
   "epoch": 1,
   "batch_size": 8,

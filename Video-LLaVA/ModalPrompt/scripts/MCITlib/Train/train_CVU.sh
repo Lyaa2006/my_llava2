@@ -3,49 +3,41 @@ set -e
 
 HARD_PATH=/your_path/MCITlib_v3
 
-# pip install -e .
 bash scripts/MCITlib/Train/Task1.sh \
    $HARD_PATH/configs/model_configs/videollava.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/counting.json \
    $HARD_PATH/configs/train_configs/ModalPrompt/Video-LLaVA/CL-VISTA/train/task1.json
 
-# pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
    $HARD_PATH/configs/model_configs/videollava.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/space.json \
    $HARD_PATH/configs/train_configs/ModalPrompt/Video-LLaVA/CL-VISTA/train/task2.json
 
-# pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
   $HARD_PATH/configs/model_configs/videollava.json \
   $HARD_PATH/configs/data_configs/CL-VISTA/traffic.json \
   $HARD_PATH/configs/train_configs/ModalPrompt/Video-LLaVA/CL-VISTA/train/task3.json
 
-# pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
    $HARD_PATH/configs/model_configs/videollava.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/movie.json \
    $HARD_PATH/configs/train_configs/ModalPrompt/Video-LLaVA/CL-VISTA/train/task4.json
 
-# pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
    $HARD_PATH/configs/model_configs/videollava.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/gui.json \
    $HARD_PATH/configs/train_configs/ModalPrompt/Video-LLaVA/CL-VISTA/train/task5.json
 
-# pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
    $HARD_PATH/configs/model_configs/videollava.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/science.json \
    $HARD_PATH/configs/train_configs/ModalPrompt/Video-LLaVA/CL-VISTA/train/task6.json
 
-# pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
    $HARD_PATH/configs/model_configs/videollava.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/sports.json \
    $HARD_PATH/configs/train_configs/ModalPrompt/Video-LLaVA/CL-VISTA/train/task7.json
 
-# pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
    $HARD_PATH/configs/model_configs/videollava.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/star.json \

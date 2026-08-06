@@ -30,6 +30,11 @@ class CLIPVisionTower(nn.Module):
         self.is_loaded = False
 
         self.vision_tower_name = vision_tower
+        self.clip_vision_tower_name = getattr(
+            args,
+            "mm_text_tower",
+            getattr(args, "clip_text_tower", getattr(args, "text_tower", None)),
+        )
         self.select_layer = args.mm_vision_select_layer
         self.select_feature = getattr(args, 'mm_vision_select_feature', 'patch')
 
@@ -68,8 +73,9 @@ class CLIPVisionTower(nn.Module):
             self.vision_tower = CLIPVisionModel.from_pretrained(self.vision_tower_name)
         self.vision_tower.requires_grad_(False)
 
-        clip_vision_tower_name = '/home/hongbo_zhao/ghy-cl-codebase/clip-vit-large-patch14-336'
-        self.clip_vision_tower = CLIPVisionModelWithProjection.from_pretrained(clip_vision_tower_name)
+        if self.clip_vision_tower_name is None:
+            raise ValueError("CLIP vision tower path is not configured. Expected mm_text_tower or clip_text_tower.")
+        self.clip_vision_tower = CLIPVisionModelWithProjection.from_pretrained(self.clip_vision_tower_name)
         self.clip_vision_tower.requires_grad_(False)
 
         self.is_loaded = True

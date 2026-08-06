@@ -1,0 +1,11 @@
+[
+  {
+    "text": "You are an assisstant in Android GUI navigation. You are given a screenshot image of an Android phone with the width and height of 412 and 732, respectively. The image size is scaled to [0,1] with the left upper point being [0,0].\nMy goal is \"turn on bluetooth scan. Please select the most appropriate option to achieve my goal.\nA. Lift from position [0.69, 0.76] to position [0.62, 0.5]\nB. Click at position [0.91, 0.24]\nC. Click at position [0.18, 0.25]\nD. Click at position [0.21, 0.83]",
+    "answer": null,
+    "question_id": "ALL_10475",
+    "image": "images/MMT-Bench_ALL_10475.png",
+    "category": "web_shopping",
+    "l2-category": "gui_navigation",
+    "split": "VAL"
+  }
+]

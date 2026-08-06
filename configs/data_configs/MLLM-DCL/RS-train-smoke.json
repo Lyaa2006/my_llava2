@@ -1,0 +1,17 @@
+[
+  {
+    "id": 800740,
+    "image": "images/8004.png",
+    "conversations": [
+      {
+        "from": "human",
+        "value": "<image>\nIs there a vineyard? \nAnswer the question using a single word or phrase."
+      },
+      {
+        "from": "gpt",
+        "value": "no"
+      }
+    ],
+    "question_id": 800740
+  }
+]

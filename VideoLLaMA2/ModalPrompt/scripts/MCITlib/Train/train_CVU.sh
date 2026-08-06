@@ -4,31 +4,26 @@ export NCCL_TIMEOUT=7200000
 
 HARD_PATH=/your_path/MCITlib_v3
 
-# pip install -e .
 bash scripts/MCITlib/Train/Task1.sh \
    $HARD_PATH/configs/model_configs/videollama2.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/counting.json \
    $HARD_PATH/configs/train_configs/ModalPrompt/VideoLLaMA2/CL-VISTA/train/task1.json
 #
-# pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
    $HARD_PATH/configs/model_configs/videollama2.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/space.json \
    $HARD_PATH/configs/train_configs/ModalPrompt/VideoLLaMA2/CL-VISTA/train/task2.json
 #
-#pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
    $HARD_PATH/configs/model_configs/videollama2.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/traffic.json \
    $HARD_PATH/configs/train_configs/ModalPrompt/VideoLLaMA2/CL-VISTA/train/task3.json
 
-#pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
    $HARD_PATH/configs/model_configs/videollama2.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/movie.json \
    $HARD_PATH/configs/train_configs/ModalPrompt/VideoLLaMA2/CL-VISTA/train/task4.json
 
-#pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
    $HARD_PATH/configs/model_configs/videollama2.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/gui.json \

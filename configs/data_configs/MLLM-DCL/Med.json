@@ -1,9 +1,6 @@
 {
-  "train_path": "/your_data_path/MLLM-CL/Med/train.json",
-  "replay_path": "/your_data_path/MLLM-CL/Med/replay.json",
-  "router_path": "/your_data_path/MLLM-CL/Med/router.json",
-  "test_path": "/your_data_path/MLLM-CL/Med/test.json",
-  "train_folder": "/your_data_path/MLLM-CL/Med",
-  "router_folder": "/your_data_path/MLLM-CL",
-  "test_folder": "/your_data_path/MLLM-CL/Med"
+  "train_path": "/mnt/lyaa/MCITlib/MLLM/domain/Med/train.json",
+  "test_path": "/mnt/lyaa/MCITlib/MLLM/domain/Med/test.json",
+  "train_folder": "/mnt/lyaa/MCITlib/MLLM/domain/Med",
+  "test_folder": "/mnt/lyaa/MCITlib/MLLM/domain/Med"
 }

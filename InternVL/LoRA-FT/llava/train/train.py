@@ -14,7 +14,10 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 import sys
-sys.path.append('/your_path/MCITlib_v3/InternVL/LoRA-FT')
+from pathlib import Path
+
+# Keep imports stable when training is launched from any working directory.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import os
 import copy
 from dataclasses import dataclass, field

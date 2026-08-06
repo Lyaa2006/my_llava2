@@ -1,0 +1,10 @@
+[
+  {
+    "dataset_name": "IIIT5K",
+    "text": "what is written in the image?",
+    "image": "images/OCRBench_Images/IIIT5K/test/918_1.png",
+    "question_id": "OCR_test_1",
+    "answer": "CENTRE",
+    "answer_type": "Regular Text Recognition"
+  }
+]

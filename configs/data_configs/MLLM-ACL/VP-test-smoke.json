@@ -1,0 +1,10 @@
+[
+  {
+    "question_id": "CVBench_2D_132",
+    "type": "2D",
+    "task": "Count",
+    "text": "Answer in natural language. How many billboards are in the image? Choose between the following options: 1, 0, 2, or 3.",
+    "answer": "1",
+    "image": "images/2D/count/ade20k_365.png"
+  }
+]

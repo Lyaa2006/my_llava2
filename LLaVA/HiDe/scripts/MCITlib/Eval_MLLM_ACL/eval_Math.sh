@@ -19,6 +19,17 @@ DATA_PATH=$(read_config "$DATA_CONFIG" test_path)
 IMAGE=$(read_config "$DATA_CONFIG" test_folder)
 RESULT_PATH=$(read_config "$TRAIN_CONFIG" result_path)
 
+count_samples() {
+    python3 - "$1" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r") as f:
+    data = json.load(f)
+print(len(data))
+PY
+}
+
 gpu_list=""
 for ((i=0; i<GPU_NUM; i++)); do
     gpu_list+="$i,"
@@ -28,9 +39,17 @@ gpu_list=${gpu_list%,}
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-$gpu_list}"
 
 IFS=',' read -ra GPULIST <<< "$CUDA_VISIBLE_DEVICES"
+SAMPLE_COUNT=$(count_samples "$DATA_PATH")
 CHUNKS=${#GPULIST[@]}
+if [ "$SAMPLE_COUNT" -lt "$CHUNKS" ]; then
+    CHUNKS="$SAMPLE_COUNT"
+fi
+if [ "$CHUNKS" -lt 1 ]; then
+    CHUNKS=1
+fi
 
 RESULT_DIR="$RESULT_PATH/$TASK"
+mkdir -p "$RESULT_DIR/$STAGE"
 
 for IDX in $(seq 0 $((CHUNKS-1))); do
     CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python -m llava.eval.CoIN.model_math \
@@ -38,6 +57,8 @@ for IDX in $(seq 0 $((CHUNKS-1))); do
         --model-base $MODELBASE \
         --question-file $DATA_PATH \
         --image-folder $IMAGE \
+        --text-tower $TEXT_TOWER \
+        --num-task $NUM_TASK \
         --answers-file $RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl \
         --num-chunks $CHUNKS \
         --chunk-idx $IDX \
@@ -55,7 +76,12 @@ output_file=$RESULT_DIR/$STAGE/merge.jsonl
 
 # Loop through the indices and concatenate each file.
 for IDX in $(seq 0 $((CHUNKS-1))); do
-    cat $RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl >> "$output_file"
+    shard_file=$RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl
+    if [ -f "$shard_file" ]; then
+        cat "$shard_file" >> "$output_file"
+    else
+        echo "[warn] Missing shard output: $shard_file"
+    fi
 done
 
 echo "Eval math"

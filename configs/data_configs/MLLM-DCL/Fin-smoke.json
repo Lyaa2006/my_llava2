@@ -1,0 +1,6 @@
+{
+  "train_path": "/mnt/lyaa/MCITlib/configs/data_configs/MLLM-DCL/Fin-train-smoke.json",
+  "test_path": "/mnt/lyaa/MCITlib/configs/data_configs/MLLM-DCL/Fin-test-smoke.json",
+  "train_folder": "/mnt/lyaa/MCITlib/MLLM/domain/Fin",
+  "test_folder": "/mnt/lyaa/MCITlib/MLLM/domain/Fin"
+}

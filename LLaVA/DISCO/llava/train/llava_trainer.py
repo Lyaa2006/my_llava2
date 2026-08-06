@@ -4,15 +4,18 @@ import torch
 from torch.utils.data import Sampler
 
 from transformers import Trainer
-from transformers.trainer import (
-    is_sagemaker_mp_enabled,
-    get_parameter_names,
-    has_length,
-    ALL_LAYERNORM_LAYERS,
-    ShardedDDPOption,
-    logger,
-)
+from transformers.trainer import is_sagemaker_mp_enabled, get_parameter_names, has_length, ALL_LAYERNORM_LAYERS, logger
 from typing import List, Optional
+
+try:
+    from transformers.trainer import ShardedDDPOption
+except ImportError:
+    class ShardedDDPOption:
+        SIMPLE = "simple"
+
+
+def _is_sharded_ddp_simple(trainer):
+    return getattr(trainer, "sharded_ddp", None) == ShardedDDPOption.SIMPLE
 
 
 def maybe_zero_3(param, ignore_status=False, name=None):
@@ -156,7 +159,7 @@ class LLaVATrainer(Trainer):
         """
         if is_sagemaker_mp_enabled():
             return super().create_optimizer()
-        if self.sharded_ddp == ShardedDDPOption.SIMPLE:
+        if _is_sharded_ddp_simple(self):
             return super().create_optimizer()
 
         opt_model = self.model
@@ -212,7 +215,7 @@ class LLaVATrainer(Trainer):
 
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
 
-            if self.sharded_ddp == ShardedDDPOption.SIMPLE:
+            if _is_sharded_ddp_simple(self):
                 self.optimizer = OSS(
                     params=optimizer_grouped_parameters,
                     optim=optimizer_cls,

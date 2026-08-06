@@ -14,14 +14,18 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 import sys
-sys.path.append('/your_path/MCITlib_v3/InternVL/MoELoRA')
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 import os
 import copy
 from dataclasses import dataclass, field
 import json
 import logging
-import pathlib
 from typing import Dict, Optional, Sequence, List
+import pathlib
 
 import torch
 import random

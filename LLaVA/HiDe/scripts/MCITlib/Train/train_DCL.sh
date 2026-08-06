@@ -1,38 +1,43 @@
 #!/bin/bash
+set -e
 
-HARD_PATH=/your_path/MCITlib_v3
+SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MCITLIB_ROOT="$(realpath "$SCRIPT_DIR/../../../../..")"
+HARD_PATH="${HARD_PATH:-$MCITLIB_ROOT}"
 
-pip install -e .
+LOG_DIR="${LOG_DIR:-$MCITLIB_ROOT/logs/MLLM-DCL}"
+mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_FILE:-$LOG_DIR/train_DCL_$(date +%Y%m%d_%H%M%S).log}"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo "Logging to: $LOG_FILE"
+
 bash scripts/MCITlib/Train/Task1.sh \
-    $HARD_PATH/configs/model_configs/llava.json \
-    $HARD_PATH/configs/data_configs/MLLM-DCL/RS.json \
-    $HARD_PATH/configs/train_configs/HiDe/LLaVA/MLLM-DCL/train/task1.json
-bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 1 $HARD_PATH
+    "$HARD_PATH/configs/model_configs/llava.json" \
+    "$HARD_PATH/configs/data_configs/MLLM-DCL/RS.json" \
+    "$HARD_PATH/configs/train_configs/HiDe/LLaVA/MLLM-DCL/train/task1.json"
+bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 1
 
-pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
-    $HARD_PATH/configs/model_configs/llava.json \
-    $HARD_PATH/configs/data_configs/MLLM-DCL/Med.json \
-    $HARD_PATH/configs/train_configs/HiDe/LLaVA/MLLM-DCL/train/task2.json
-bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 2 $HARD_PATH
+    "$HARD_PATH/configs/model_configs/llava.json" \
+    "$HARD_PATH/configs/data_configs/MLLM-DCL/Med.json" \
+    "$HARD_PATH/configs/train_configs/HiDe/LLaVA/MLLM-DCL/train/task2.json"
+bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 2
 
-pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
-    $HARD_PATH/configs/model_configs/llava.json \
-    $HARD_PATH/configs/data_configs/MLLM-DCL/AD.json \
-    $HARD_PATH/configs/train_configs/HiDe/LLaVA/MLLM-DCL/train/task3.json
-bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 3 $HARD_PATH
+    "$HARD_PATH/configs/model_configs/llava.json" \
+    "$HARD_PATH/configs/data_configs/MLLM-DCL/AD.json" \
+    "$HARD_PATH/configs/train_configs/HiDe/LLaVA/MLLM-DCL/train/task3.json"
+bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 3
 
-pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
-    $HARD_PATH/configs/model_configs/llava.json \
-    $HARD_PATH/configs/data_configs/MLLM-DCL/Sci.json \
-    $HARD_PATH/configs/train_configs/HiDe/LLaVA/MLLM-DCL/train/task4.json
-bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 4 $HARD_PATH
+    "$HARD_PATH/configs/model_configs/llava.json" \
+    "$HARD_PATH/configs/data_configs/MLLM-DCL/Sci.json" \
+    "$HARD_PATH/configs/train_configs/HiDe/LLaVA/MLLM-DCL/train/task4.json"
+bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 4
 
-pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
-    $HARD_PATH/configs/model_configs/llava.json \
-    $HARD_PATH/configs/data_configs/MLLM-DCL/Fin.json \
-    $HARD_PATH/configs/train_configs/HiDe/LLaVA/MLLM-DCL/train/task5.json
-bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 5 $HARD_PATH
+    "$HARD_PATH/configs/model_configs/llava.json" \
+    "$HARD_PATH/configs/data_configs/MLLM-DCL/Fin.json" \
+    "$HARD_PATH/configs/train_configs/HiDe/LLaVA/MLLM-DCL/train/task5.json"
+bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 5

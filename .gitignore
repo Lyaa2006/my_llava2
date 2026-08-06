@@ -55,11 +55,30 @@ runs/
 checkpoints/
 checkpoint/
 ckpt/
+models/
+pretrained/
+publish_models/
+public_models/
 *.ckpt
 *.pt
 *.pth
 *.bin
 *.safetensors
+
+# --- ML caches / compiled kernels ---
+.triton/
+**/triton_cache/
+
+# --- Evaluation exports / experiment reports ---
+*_submission.tsv
+*MathVista*.xlsx
+docs/experiment*_description_drift/
+docs/experiment*_outputs*/
+docs/experiment*_prelim_ce_only/
+docs/experiment*_template_alignment*/
+docs/experiment*_l_focus_logic_smoke/
+docs/hierarchical_boundary_outputs*/
+docs/hierarchical_boundary_sweeps*/
 
 # --- Nested git dirs (vendored repos) ---
 **/.git/

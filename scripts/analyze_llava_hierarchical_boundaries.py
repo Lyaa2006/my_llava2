@@ -79,6 +79,12 @@ def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
+def ensure_parent_dir(path: str) -> None:
+    parent_dir = os.path.dirname(path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+
+
 def load_task_samples(ucit_root: str, task_names: Sequence[str], samples_per_task: int, seed: int) -> Dict[str, List[Sample]]:
     rng = random.Random(seed)
     task_samples: Dict[str, List[Sample]] = {}
@@ -298,6 +304,7 @@ def plot_curves(
     ax.set_title("Hierarchical Boundary Analysis on UCIT")
     ax.legend(frameon=True, ncol=2, loc="upper center", bbox_to_anchor=(0.5, -0.13))
     fig.tight_layout()
+    ensure_parent_dir(output_path)
     fig.savefig(output_path, bbox_inches="tight")
     plt.close(fig)
 
@@ -333,6 +340,7 @@ def save_report(
             "Middle-shallow boundary is selected as the late-layer peak of the style logit signal.",
         ],
     }
+    ensure_parent_dir(output_path)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
 

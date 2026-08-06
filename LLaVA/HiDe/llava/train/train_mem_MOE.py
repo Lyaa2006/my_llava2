@@ -4,7 +4,11 @@
 
 # Need to call this before importing transformers.
 import sys
-sys.path.append('/your_path/MCITlib_v3/LLaVA/HiDe')
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 from llava.train.llama_flash_attn_monkey_patch import replace_llama_attn_with_flash_attn
 
 replace_llama_attn_with_flash_attn()

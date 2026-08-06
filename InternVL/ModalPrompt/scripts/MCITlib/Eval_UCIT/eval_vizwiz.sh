@@ -34,6 +34,7 @@ IFS=',' read -ra GPULIST <<< "$CUDA_VISIBLE_DEVICES"
 CHUNKS=${#GPULIST[@]}
 
 RESULT_DIR="$RESULT_PATH/$TASK"
+mkdir -p "$RESULT_DIR/$STAGE"
 
 for IDX in $(seq 0 $((CHUNKS-1))); do
     CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python -m llava.eval.ModalPrompt.model_others \
@@ -64,10 +65,10 @@ for IDX in $(seq 0 $((CHUNKS-1))); do
     cat $RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl >> "$output_file"
 done
 
-python -m llava.eval.ModalPrompt.eval_caption \
+python -m llava.eval.eval_caption \
     --annotation-file $ANNOTATION \
     --result-file $output_file \
-    --output-dir $RESULT_DIR/$STAGE \
+    --output-dir $RESULT_DIR/$STAGE
 
 # /mnt/cache/guohaiyang/miniconda3/envs/coin/bin/python -m llava.eval.LLaVA.ModalPrompt.create_prompt \
 #     --rule ./ETrain/Eval/LLaVA/ModalPrompt/rule.json \

@@ -1,0 +1,19 @@
+[
+  {
+    "question_id": "financial/train/3886.png",
+    "image": "images/train/3886.png",
+    "question_type": "choice",
+    "category": "Price reading",
+    "difficulty": "easy",
+    "conversations": [
+      {
+        "from": "human",
+        "value": "<image>\nBased on the chart, around which date did the price reach its lowest level? A. January 13 B. December 04 C. November 14 D. December 24"
+      },
+      {
+        "from": "gpt",
+        "value": "D"
+      }
+    ]
+  }
+]

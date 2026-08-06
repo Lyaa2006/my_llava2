@@ -25,7 +25,6 @@ print(data.get(key, default))
 PY
 }
 
-GPU_NUM=$(read_config "$TRAIN_CONFIG" gpu_num)
 RANK=$(read_config "$TRAIN_CONFIG" rank)
 EXPERT=$(read_config "$TRAIN_CONFIG" expert_num)
 MODEL_NAME=$(read_config "$MODEL_CONFIG" model_name)
@@ -44,15 +43,31 @@ MODEL_MAX_LENGTH=$(read_config_default "$TRAIN_CONFIG" model_max_length 2048)
 DATALOADER_NUM_WORKERS=$(read_config_default "$TRAIN_CONFIG" dataloader_num_workers 4)
 MAX_STEPS=$(read_config_default "$TRAIN_CONFIG" max_steps -1)
 
+GPU_NUM=${GPU_NUM_OVERRIDE:-$(read_config "$TRAIN_CONFIG" gpu_num)}
+export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
+export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"
+export NCCL_IB_DISABLE="${NCCL_IB_DISABLE:-1}"
+export NCCL_P2P_DISABLE="${NCCL_P2P_DISABLE:-1}"
+
 if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
-    GPU_LIST="$CUDA_VISIBLE_DEVICES"
-    GPU_NUM=$(python3 -c "print(len([x for x in '${CUDA_VISIBLE_DEVICES}'.split(',') if x.strip()]))")
+    DEEPSPEED_GPU_LIST=$(python3 - "$CUDA_VISIBLE_DEVICES" "$GPU_NUM" <<'PY'
+import sys
+
+visible = [x.strip() for x in sys.argv[1].split(",") if x.strip()]
+gpu_num = int(sys.argv[2])
+if len(visible) < gpu_num:
+    raise SystemExit(
+        f"Requested gpu_num={gpu_num}, but CUDA_VISIBLE_DEVICES only exposes {len(visible)} GPU(s): {visible}"
+    )
+print(",".join(visible[:gpu_num]))
+PY
+)
 else
-    GPU_LIST=""
+    DEEPSPEED_GPU_LIST=""
     for i in $(seq 0 $((GPU_NUM-1))); do
-        GPU_LIST+="$i,"
+        DEEPSPEED_GPU_LIST+="$i,"
     done
-    GPU_LIST=${GPU_LIST%,}
+    DEEPSPEED_GPU_LIST=${DEEPSPEED_GPU_LIST%,}
 fi
 
 if [ -z "${MASTER_PORT:-}" ]; then
@@ -77,7 +92,7 @@ if [ "$MAX_STEPS" -gt 0 ]; then
     EXTRA_ARGS="$EXTRA_ARGS --max_steps $MAX_STEPS"
 fi
 
-deepspeed --include localhost:$GPU_LIST --master_port "${MASTER_PORT:-9001}" llava/train/train_mem_MOE.py \
+env -u CUDA_VISIBLE_DEVICES deepspeed --include "localhost:$DEEPSPEED_GPU_LIST" --master_port "${MASTER_PORT:-9001}" llava/train/train_mem_MOE.py \
     --deepspeed ./scripts/zero2.json \
     --lora_enable True --lora_r $RANK --lora_alpha $((RANK * 2)) --mm_projector_lr 2e-5 \
     --expert_num $EXPERT \

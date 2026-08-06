@@ -1,9 +1,6 @@
 {
-  "train_path": "/your_data_path/MLLM-CL/VP/train.json",
-  "replay_path": "/your_data_path/MLLM-CL/VP/replay.json",
-  "router_path": "/your_data_path/MLLM-CL/VP/router.json",
-  "test_path": "/your_data_path/MLLM-CL/CV-Benchv2/test.json",
-  "train_folder": "/your_data_path/MLLM-CL/VP",
-  "router_folder": "/your_data_path/MLLM-CL",
-  "test_folder": "/your_data_path/MLLM-CL/CV-Benchv2"
+  "train_path": "/mnt/lyaa/MCITlib/MLLM/ability/VP/train.json",
+  "test_path": "/mnt/lyaa/MCITlib/MLLM/ability/VP_test/test.json",
+  "train_folder": "/mnt/lyaa/MCITlib/MLLM/ability/VP",
+  "test_folder": "/mnt/lyaa/MCITlib/MLLM/ability/VP_test"
 }

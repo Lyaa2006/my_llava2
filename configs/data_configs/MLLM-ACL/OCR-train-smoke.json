@@ -1,0 +1,16 @@
+[
+  {
+    "image": "images/Monkey_150k/densecap_data/GCC_train_001032771.jpg",
+    "question_id": "densecap_data/GCC_train_001032771.jpg",
+    "conversations": [
+      {
+        "from": "human",
+        "value": "<image>\nGenerate the detailed caption in English: "
+      },
+      {
+        "from": "gpt",
+        "value": "This image shows an athlete driving a green and white vehicle during practice for an event, as seen in the combined descriptions. The car has black tires with silver rims, and there is a green and white sign in the background with the words \"pretty images.\" Additionally, there are various texts in the image, including \"AUSDRILL\" on the racing car and \"Mechanies Wanted\" nearby. Overall, this appears to be a sports event with a focus on driving and racing."
+      }
+    ]
+  }
+]

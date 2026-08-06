@@ -4,6 +4,8 @@ import os
 import json
 from tqdm import tqdm
 import shortuuid
+import pandas as pd
+import re
 
 from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 from llava.conversation import conv_templates, SeparatorStyle
@@ -26,6 +28,23 @@ def split_list(lst, n):
 def get_chunk(lst, n, k):
     chunks = split_list(lst, n)
     return chunks[k]
+
+
+def _literal_or_str(value, default):
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value
+    return repr(value)
+
+
+def _question_row_id(question_id):
+    if not isinstance(question_id, str):
+        return None
+    match = re.search(r"(\d+)$", question_id)
+    if match is None:
+        return None
+    return int(match.group(1))
 
 
 # Custom dataset class
@@ -89,14 +108,53 @@ def eval_model(args):
         print(f'It seems that this is a plain model, but it is not using a mmtag prompt, auto switching to {args.conv_mode}.')
 
     data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config)
-    # read results/llava_v1.5_7b_MathVista_MINI.xlsx
-    import pandas
-    excel_ori = pandas.read_excel('llava_v1.5_7b_MathVista_MINI.xlsx') #  a DataFrame
+    row_lookup = {}
+    template_path = 'llava_v1.5_7b_MathVista_MINI.xlsx'
+    if os.path.exists(template_path):
+        excel_template = pd.read_excel(template_path)
+        template_rows = [_question_row_id(line.get("question_id")) for line in questions]
+        if template_rows and all(row is not None and 0 <= row < len(excel_template) for row in template_rows):
+            excel_ori = excel_template.iloc[template_rows].copy().reset_index(drop=True)
+            row_lookup = {
+                line["question_id"]: pos
+                for pos, line in enumerate(questions)
+                if "question_id" in line
+            }
+        else:
+            excel_ori = excel_template
+    else:
+        records = []
+        for line in questions:
+            record = dict(line)
+            record['index'] = line.get('question_id', len(records))
+            record['question'] = line.get('question', line.get('text', ''))
+            record.setdefault('prediction', '')
+            record.setdefault('task', 'Math')
+            record['skills'] = _literal_or_str(line.get('skills', ['Math']), "['Math']")
+            record['choices'] = _literal_or_str(line.get('choices', []), '[]')
+            record.setdefault('answer_option', line.get('answer_option', ''))
+            record.setdefault('question_type', line.get('question_type', 'free_form'))
+            answer = line.get('answer')
+            if 'answer_type' in line:
+                record['answer_type'] = line['answer_type']
+            elif isinstance(answer, int) and not isinstance(answer, bool):
+                record['answer_type'] = 'integer'
+            elif isinstance(answer, float):
+                record['answer_type'] = 'float'
+            else:
+                record['answer_type'] = 'text'
+            records.append(record)
+        excel_ori = pd.DataFrame(records)
+        row_lookup = {
+            line["question_id"]: pos
+            for pos, line in enumerate(questions)
+            if "question_id" in line
+        }
     excel = copy.deepcopy(excel_ori)
-    for (input_ids, image_tensor), line in tqdm(zip(data_loader, questions), total=len(questions)):
+    for row_idx, ((input_ids, image_tensor), line) in enumerate(tqdm(zip(data_loader, questions), total=len(questions))):
         idx = line["question_id"]
         cur_prompt = line["text"]
-        id_excel = int(idx.replace("testmini_",""))
+        id_excel = row_lookup.get(idx, row_idx)
         
         input_ids = input_ids.to(device='cuda', non_blocking=True)
         conv = conv_templates[args.conv_mode].copy()
@@ -104,17 +162,28 @@ def eval_model(args):
         keywords = [stop_str] # [</s>]
         stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
         
-        with torch.inference_mode():
-            output_ids = model.generate(
-                input_ids,
-                images=image_tensor.to(dtype=torch.float16, device='cuda', non_blocking=True),
-                do_sample=True if args.temperature > 0 else False,
-                temperature=args.temperature,
-                top_p=args.top_p,
-                num_beams=args.num_beams,
-                max_new_tokens=args.max_new_tokens,
-                stopping_criteria=[stopping_criteria],
-                use_cache=True)
+        try:
+            with torch.inference_mode():
+                output_ids = model.generate(
+                    input_ids,
+                    images=image_tensor.to(dtype=torch.float16, device='cuda', non_blocking=True),
+                    do_sample=True if args.temperature > 0 else False,
+                    temperature=args.temperature,
+                    top_p=args.top_p,
+                    num_beams=args.num_beams,
+                    max_new_tokens=args.max_new_tokens,
+                    stopping_criteria=[stopping_criteria],
+                    use_cache=True)
+        except torch.cuda.OutOfMemoryError as exc:
+            print(f"[skip-oom] question_id={idx} image={line.get('image')} reason={exc}", flush=True)
+            torch.cuda.empty_cache()
+            continue
+        except RuntimeError as exc:
+            if "out of memory" not in str(exc).lower():
+                raise
+            print(f"[skip-oom] question_id={idx} image={line.get('image')} reason={exc}", flush=True)
+            torch.cuda.empty_cache()
+            continue
 
         input_token_len = input_ids.shape[1]
         n_diff_input_output = (input_ids != output_ids[:, :input_token_len]).sum().item()
@@ -131,7 +200,7 @@ def eval_model(args):
                                    "answer_id": ans_id,
                                    "model_id": model_name,
                                    "metadata": {}}) + "\n")
-        # ans_file.flush()
+        ans_file.flush()
         
     ans_file.close()
 

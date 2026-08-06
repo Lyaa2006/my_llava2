@@ -3,7 +3,11 @@ import torch
 import os
 import json
 import sys
-sys.path.append('/your_path/MCITlib_v3/InternVL/ModalPrompt')
+from pathlib import Path
+
+MODALPROMPT_ROOT = Path(__file__).resolve().parents[3]
+if str(MODALPROMPT_ROOT) not in sys.path:
+    sys.path.append(str(MODALPROMPT_ROOT))
 from tqdm import tqdm
 import shortuuid
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig, BitsAndBytesConfig

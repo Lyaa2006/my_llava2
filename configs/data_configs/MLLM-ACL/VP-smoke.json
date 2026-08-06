@@ -1,0 +1,6 @@
+{
+  "train_path": "/mnt/lyaa/MCITlib/configs/data_configs/MLLM-ACL/VP-train-smoke.json",
+  "test_path": "/mnt/lyaa/MCITlib/configs/data_configs/MLLM-ACL/VP-test-smoke.json",
+  "train_folder": "/mnt/lyaa/MCITlib/MLLM/ability/VP",
+  "test_folder": "/mnt/lyaa/MCITlib/MLLM/ability/VP_test"
+}

@@ -8,25 +8,21 @@ bash scripts/MCITlib/Train/Task1.sh \
    $HARD_PATH/configs/train_configs/MoELoRA/Video-LLaVA/CL-VISTA/train/task1.json
 bash scripts/MCITlib/Eval/Eval_CVU.sh 1
 
-# pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
    $HARD_PATH/configs/model_configs/videollava.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/space.json \
    $HARD_PATH/configs/train_configs/MoELoRA/Video-LLaVA/CL-VISTA/train/task2.json
 #
-#pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
    $HARD_PATH/configs/model_configs/videollava.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/traffic.json \
    $HARD_PATH/configs/train_configs/MoELoRA/Video-LLaVA/CL-VISTA/train/task3.json
 
-#pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
    $HARD_PATH/configs/model_configs/videollava.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/movie.json \
    $HARD_PATH/configs/train_configs/MoELoRA/Video-LLaVA/CL-VISTA/train/task4.json
 
-#pip install -e .
 bash scripts/MCITlib/Train/Taskn.sh \
    $HARD_PATH/configs/model_configs/videollava.json \
    $HARD_PATH/configs/data_configs/CL-VISTA/gui.json \

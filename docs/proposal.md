@@ -25,7 +25,7 @@
 
 ## 4. ⼀句话概括你的 Idea
 
-针对上述问题，我们提出了一个统一的持续学习框架**Hi-DESC (Hierarchical Description-aligned Expert Collaborative Continual Learning)**。在训练阶段，Hi-DESC以固定的base model description cache作为跨任务共享语义锚点：在standard ce之外引入description focus loss和description energy loss，约束当前任务专家相对于base语义锚点的更新方式，从而维持各专家LoRA之间的语义一致性；前向推理时采用Role-aware Progressive Collaboration架构分层实现深层跨任务推理能力专家协同，以及浅层语言表达风格的任务差异化。
+针对上述问题，我们提出了一个统一的持续学习框架**Hi-DESC (Hierarchical Description-aligned Expert Collaborative Continual Learning)**。在训练阶段，Hi-DESC以固定的base model description cache作为跨任务共享语义锚点：在standard ce之外引入description focus loss和description energy loss，并在深中交接层引入`L_align`约束，约束当前任务专家相对于base语义锚点的更新方式，从而维持各专家LoRA之间的语义一致性；前向推理时采用Role-aware Progressive Collaboration架构，按照实验一重新划分的深/中/浅三层边界实现深层跨任务推理能力专家协同，以及浅层语言表达风格的任务差异化。
 
 核心假设：**持续学习过程中，关键语义token处更新幅度较大，其他模板词处更新幅度较小**
 
@@ -46,8 +46,8 @@
 在loss设计上，当前训练目标由三部分组成：
 
 1. `standard CE`：保证当前任务的主学习目标不被削弱。
-2. `description focus loss`：约束description空间中的变化应尽量集中在key tokens上，而不是无差别扩散到全部token，提升专家的学习指向性。
-3. `description energy loss`：约束description hidden states相对base reference的整体漂移幅度，避免新任务训练造成过强的全局偏移。
+2. `L_struct`：由`description focus loss`和`description energy loss`组成。其中，`description focus loss`约束description空间中的变化应尽量集中在key tokens上，而不是无差别扩散到全部token，提升专家的学习指向性；`description energy loss`约束description hidden states相对base reference的整体漂移幅度，避免新任务训练造成过强的全局偏移。
+3. `L_align`：作用在深中交接层，约束image/text表征在进入任务特异性推理前保持语义一致。
 
 
 ## 7. 为了解决挑战⼆，你提出了什么技术？描述这个技术的
@@ -56,11 +56,11 @@
 
 ## Motivation
 
-针对挑战2，我们提出了 Role-aware Progressive Collaboration 推理框架。该方法利用训练阶段维护的 latent roles（由 task anchors 聚类诱导得到），整体前向过程专家激活遵循“从粗到细”的模式：
+针对挑战2，我们提出了 Role-aware Progressive Collaboration 推理框架。该方法利用训练阶段维护的 latent roles（由 task anchors 聚类诱导得到），并结合实验一重新划分的层级边界（深层 `1-13`，中层 `14-28`，浅层 `29-32`），整体前向过程专家激活遵循“从粗到细”的模式；其中深中交接层（第 `13` 层）额外加入 `L_align`，用于约束图文语义在层级交接处保持一致。
 
-1. 深层（1-16）：不同role的专家之间按照相关性评分加权fuse，实现通用推理能力的协同。  
-2. 中层（16-32）：实现同一role内的专家加权激活，实现同一类型的专家LoRA之间任务特异性推理能力的协同。  
-3. 浅层（32）：收敛至最相关（top k）的专家单元加权fuse，实现输出语言风格的精准匹配
+1. 深层（1-13）：不同role的专家之间按照相关性评分加权fuse，实现通用推理能力的协同。  
+2. 中层（14-28）：实现同一role内的专家加权激活，实现同一类型的专家LoRA之间任务特异性推理能力的协同。  
+3. 浅层（29-32）：收敛至最相关（top k）的专家单元加权fuse，实现输出语言风格的精准匹配
 
 ## 8. 总结
 

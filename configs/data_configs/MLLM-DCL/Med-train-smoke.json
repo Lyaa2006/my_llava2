@@ -1,0 +1,16 @@
+[
+  {
+    "image": "images/image_15610.jpg",
+    "question_id": "0",
+    "conversations": [
+      {
+        "from": "human",
+        "value": "<image>\nis acid present?"
+      },
+      {
+        "from": "gpt",
+        "value": "no"
+      }
+    ]
+  }
+]

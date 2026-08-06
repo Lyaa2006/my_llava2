@@ -1,18 +1,50 @@
 import os
+from enum import Enum
+
 import torch
+import torch.nn as nn
 
 from torch.utils.data import Sampler
 
 from transformers import Trainer
-from transformers.trainer import (
-    is_sagemaker_mp_enabled,
-    get_parameter_names,
-    has_length,
-    ALL_LAYERNORM_LAYERS,
-    ShardedDDPOption,
-    logger,
-)
+
+try:
+    from transformers.trainer import (
+        is_sagemaker_mp_enabled,
+        get_parameter_names,
+        has_length,
+        logger,
+    )
+except ImportError:
+    from transformers.trainer import (
+        is_sagemaker_mp_enabled,
+        get_parameter_names,
+        logger,
+    )
+    from transformers.trainer_utils import has_length
+
+try:
+    from transformers.pytorch_utils import ALL_LAYERNORM_LAYERS
+except ImportError:
+    ALL_LAYERNORM_LAYERS = ()
+
+try:
+    from transformers.trainer import ShardedDDPOption
+except ImportError:
+    class ShardedDDPOption(Enum):
+        SIMPLE = "simple"
+        OFF = "off"
+
+try:
+    from fairscale.optim import OSS
+except ImportError:
+    OSS = None
+
 from typing import List, Optional
+
+
+def _get_sharded_ddp(trainer):
+    return getattr(trainer, "sharded_ddp", None)
 
 
 def maybe_zero_3(param, ignore_status=False, name=None):
@@ -158,7 +190,7 @@ class LLaVATrainer(Trainer):
         """
         if is_sagemaker_mp_enabled():
             return super().create_optimizer()
-        if self.sharded_ddp == ShardedDDPOption.SIMPLE:
+        if _get_sharded_ddp(self) == ShardedDDPOption.SIMPLE:
             return super().create_optimizer()
 
         opt_model = self.model
@@ -214,7 +246,9 @@ class LLaVATrainer(Trainer):
 
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
 
-            if self.sharded_ddp == ShardedDDPOption.SIMPLE:
+            if _get_sharded_ddp(self) == ShardedDDPOption.SIMPLE:
+                if OSS is None:
+                    raise ImportError("fairscale is required for sharded DDP optimizer support")
                 self.optimizer = OSS(
                     params=optimizer_grouped_parameters,
                     optim=optimizer_cls,

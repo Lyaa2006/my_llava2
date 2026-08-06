@@ -9,8 +9,16 @@ from transformers.models.llama.modeling_llama import apply_rotary_pos_emb, repea
 try:
     from flash_attn.flash_attn_interface import flash_attn_unpadded_qkvpacked_func
 except ImportError:
-    from flash_attn.flash_attn_interface import flash_attn_varlen_qkvpacked_func as flash_attn_unpadded_qkvpacked_func
-from flash_attn.bert_padding import unpad_input, pad_input
+    try:
+        from flash_attn.flash_attn_interface import flash_attn_varlen_qkvpacked_func as flash_attn_unpadded_qkvpacked_func
+    except ImportError:
+        flash_attn_unpadded_qkvpacked_func = None
+
+try:
+    from flash_attn.bert_padding import unpad_input, pad_input
+except ImportError:
+    unpad_input = None
+    pad_input = None
 
 
 def forward(
@@ -103,7 +111,16 @@ def _prepare_decoder_attention_mask(
 
 
 def replace_llama_attn_with_flash_attn():
-    cuda_major, cuda_minor = torch.cuda.get_device_capability()
+    if flash_attn_unpadded_qkvpacked_func is None or unpad_input is None or pad_input is None:
+        warnings.warn("flash-attn is unavailable, skipping FlashAttention monkey patch.")
+        return False
+
+    try:
+        cuda_major, cuda_minor = torch.cuda.get_device_capability()
+    except Exception as exc:
+        warnings.warn(f"Unable to query CUDA capability ({exc}), skipping FlashAttention monkey patch.")
+        return False
+
     if cuda_major < 8:
         warnings.warn(
             "Flash attention is only supported on A100 or H100 GPU during training due to head dim > 64 backward."
@@ -113,3 +130,4 @@ def replace_llama_attn_with_flash_attn():
         _prepare_decoder_attention_mask
     )
     transformers.models.llama.modeling_llama.LlamaAttention.forward = forward
+    return True

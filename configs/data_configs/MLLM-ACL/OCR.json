@@ -1,6 +1,6 @@
 {
-  "train_path": "/your_data_path/MLLM-CL/OCR/train.json",
-  "test_path": "/your_data_path/MLLM-CL/OCR_test/test.json",
-  "train_folder": "/your_data_path/MLLM-CL/OCR",
-  "test_folder": "/your_data_path/MLLM-CL/OCR_test"
+  "train_path": "/mnt/lyaa/MCITlib/MLLM/ability/OCR/train.json",
+  "test_path": "/mnt/lyaa/MCITlib/MLLM/ability/OCR_test/test.json",
+  "train_folder": "/mnt/lyaa/MCITlib/MLLM/ability/OCR",
+  "test_folder": "/mnt/lyaa/MCITlib/MLLM/ability/OCR_test"
 }

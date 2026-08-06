@@ -139,6 +139,11 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
                 labels,
                 images
             )
+        if labels is None and not self.training:
+            # In generation the image token is expanded to visual embeddings, while
+            # HF generate may keep an attention mask based on the pre-expanded IDs.
+            # For batch-size-1 eval there is no padding, so the causal mask is enough.
+            attention_mask = None
         return super().forward(
             input_ids=input_ids,
             attention_mask=attention_mask,
@@ -161,5 +166,17 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             _inputs['images'] = images
         return _inputs
 
-AutoConfig.register("llava", LlavaConfig)
-AutoModelForCausalLM.register(LlavaConfig, LlavaLlamaForCausalLM)
+try:
+    AutoConfig.register("llava", LlavaConfig, exist_ok=True)
+except TypeError:
+    try:
+        AutoConfig.register("llava", LlavaConfig)
+    except ValueError:
+        pass
+except ValueError:
+    pass
+
+try:
+    AutoModelForCausalLM.register(LlavaConfig, LlavaLlamaForCausalLM)
+except ValueError:
+    pass

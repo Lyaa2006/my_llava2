@@ -26,6 +26,19 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 from ..llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
 
 
+_LLAMA_CONFIG_DEFAULTS = LlamaConfig().to_dict()
+
+
+def _ensure_llama_config_compat(config):
+    # Transformers 4.37+ may resolve `model_type="llava"` to the built-in
+    # LlavaConfig, which lacks some LLaMA decoder fields expected by
+    # `transformers.models.llama.modeling_llama`.
+    for key in ("attention_bias", "attention_dropout", "rope_theta"):
+        if not hasattr(config, key):
+            setattr(config, key, _LLAMA_CONFIG_DEFAULTS[key])
+    return config
+
+
 class LlavaConfig(LlamaConfig):
     model_type = "llava"
 
@@ -34,6 +47,7 @@ class LlavaLlamaModel(LlavaMetaModel, LlamaModel):
     config_class = LlavaConfig
 
     def __init__(self, config: LlamaConfig):
+        config = _ensure_llama_config_compat(config)
         super(LlavaLlamaModel, self).__init__(config)
 
 
@@ -41,6 +55,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
     config_class = LlavaConfig
 
     def __init__(self, config):
+        config = _ensure_llama_config_compat(config)
         super(LlamaForCausalLM, self).__init__(config)
         self.model = LlavaLlamaModel(config)
         self.pretraining_tp = config.pretraining_tp
@@ -107,5 +122,15 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             _inputs['images'] = images
         return _inputs
 
-AutoConfig.register("llava", LlavaConfig)
-AutoModelForCausalLM.register(LlavaConfig, LlavaLlamaForCausalLM)
+try:
+    AutoConfig.register("llava", LlavaConfig)
+except ValueError as exc:
+    # Newer Transformers versions may already ship a built-in `llava` config.
+    if "already used" not in str(exc):
+        raise
+
+try:
+    AutoModelForCausalLM.register(LlavaConfig, LlavaLlamaForCausalLM)
+except ValueError as exc:
+    if "already used" not in str(exc):
+        raise

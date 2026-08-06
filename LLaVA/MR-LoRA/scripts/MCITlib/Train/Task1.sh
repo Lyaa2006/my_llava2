@@ -13,7 +13,19 @@ read_config() {
     python3 -c "import json; print(json.load(open('$1'))['$2'])"
 }
 
-GPU_NUM=$(read_config "$TRAIN_CONFIG" gpu_num)
+read_config_default() {
+    python3 - "$1" "$2" "$3" <<'PY'
+import json
+import sys
+
+path, key, default = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path) as f:
+    data = json.load(f)
+print(data.get(key, default))
+PY
+}
+
+GPU_NUM=${GPU_NUM_OVERRIDE:-$(read_config "$TRAIN_CONFIG" gpu_num)}
 RANK=$(read_config "$TRAIN_CONFIG" rank)
 MODEL_NAME=$(read_config "$MODEL_CONFIG" model_name)
 MM_PROJECTOR=$(read_config "$MODEL_CONFIG" mm_projector)
@@ -25,19 +37,78 @@ EPOCH=$(read_config "$TRAIN_CONFIG" epoch)
 BATCH_SIZE=$(read_config "$TRAIN_CONFIG" batch_size)
 GRAD_ACC=$(read_config "$TRAIN_CONFIG" grad_acc)
 LR=$(read_config "$TRAIN_CONFIG" lr)
+SAVE_STEPS=$(read_config_default "$TRAIN_CONFIG" save_steps 50000)
+MODEL_MAX_LENGTH=$(read_config_default "$TRAIN_CONFIG" model_max_length 2048)
+DATALOADER_NUM_WORKERS=$(read_config_default "$TRAIN_CONFIG" dataloader_num_workers 4)
+MAX_STEPS=$(read_config_default "$TRAIN_CONFIG" max_steps -1)
 
-GPU_LIST=""
-for i in $(seq 0 $((GPU_NUM-1))); do
-    GPU_LIST+="$i,"
-done
-GPU_LIST=${GPU_LIST%,}
+if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
+    DEEPSPEED_GPU_LIST=$(python3 - "$CUDA_VISIBLE_DEVICES" "$GPU_NUM" <<'PY'
+import sys
+
+visible = [x.strip() for x in sys.argv[1].split(",") if x.strip()]
+gpu_num = int(sys.argv[2])
+if len(visible) < gpu_num:
+    raise SystemExit(
+        f"Requested gpu_num={gpu_num}, but CUDA_VISIBLE_DEVICES only exposes {len(visible)} GPU(s): {visible}"
+    )
+print(",".join(visible[:gpu_num]))
+PY
+)
+else
+    DEEPSPEED_GPU_LIST=""
+    for i in $(seq 0 $((GPU_NUM-1))); do
+        DEEPSPEED_GPU_LIST+="$i,"
+    done
+    DEEPSPEED_GPU_LIST=${DEEPSPEED_GPU_LIST%,}
+fi
+
+MASTER_PORT=$(python3 - "${MASTER_PORT:-}" <<'PY'
+import socket
+import sys
+
+preferred = sys.argv[1].strip()
+
+def can_bind(port: int) -> bool:
+    sock = socket.socket()
+    try:
+        sock.bind(("127.0.0.1", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+if preferred:
+    try:
+        preferred_port = int(preferred)
+    except ValueError:
+        preferred_port = None
+    if preferred_port and can_bind(preferred_port):
+        print(preferred_port)
+        raise SystemExit
+
+sock = socket.socket()
+try:
+    sock.bind(("127.0.0.1", 0))
+    print(sock.getsockname()[1])
+finally:
+    sock.close()
+PY
+)
+export MASTER_PORT
 
 ################## LLaMA-2 ##################
 # PROMPT_VERSION="llava_llama_2"
 # MODEL_VERSION="Llama-2-7b-chat-hf"
 ################## LLaMA-2 ##################
 
-deepspeed --include localhost:$GPU_LIST --master_port 9001 llava/train/train_mem.py \
+EXTRA_ARGS=""
+if [ "$MAX_STEPS" -gt 0 ]; then
+    EXTRA_ARGS="$EXTRA_ARGS --max_steps $MAX_STEPS"
+fi
+
+env -u CUDA_VISIBLE_DEVICES deepspeed --include "localhost:$DEEPSPEED_GPU_LIST" --master_port "${MASTER_PORT:-9001}" llava/train/train_mem.py \
     --deepspeed ./scripts/zero2.json \
     --lora_enable True --lora_r $RANK --lora_alpha $((RANK * 2)) --mm_projector_lr 2e-5 \
     --model_name_or_path $MODEL_NAME \
@@ -60,15 +131,16 @@ deepspeed --include localhost:$GPU_LIST --master_port 9001 llava/train/train_mem
     --gradient_accumulation_steps $GRAD_ACC \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
-    --save_steps 50000 \
+    --save_steps $SAVE_STEPS \
     --learning_rate $LR \
     --weight_decay 0. \
     --warmup_ratio 0.03 \
     --lr_scheduler_type "cosine" \
     --logging_steps 1 \
     --tf32 True \
-    --model_max_length 2048 \
+    --model_max_length $MODEL_MAX_LENGTH \
     --gradient_checkpointing True \
-    --dataloader_num_workers 4 \
+    --dataloader_num_workers $DATALOADER_NUM_WORKERS \
     --lazy_preprocess True \
-    --report_to none
+    --report_to none \
+    $EXTRA_ARGS

@@ -24,6 +24,8 @@ def MathVista_auxeval(model, line):
     for i in range(retry):
         prediction = line['prediction']
         res = model.generate(prompt, temperature=i * 0.5)
+        if FAIL_MSG not in res:
+            res = normalize_extracted_answer(res, line)
 
         if FAIL_MSG in res:
             log += f'Try {i}: output is {prediction}, failed to parse.\n'
@@ -176,6 +178,36 @@ def can_infer_text(answer, choices):
     return False
 
 
+def normalize_extracted_answer(answer, line):
+    answer = str(answer).strip()
+    if not answer:
+        return answer
+
+    if line['question_type'] == 'multi_choice':
+        choices = list_to_dict(eval(line['choices']))
+        inferred = can_infer(answer, choices)
+        return inferred if inferred else answer
+
+    answer_type = line.get('answer_type')
+    if answer_type == 'integer':
+        matches = re.findall(r'-?\d+', answer.replace(',', ''))
+        if matches:
+            return matches[-1]
+    elif answer_type == 'float':
+        matches = re.findall(r'-?\d+(?:\.\d+)?', answer.replace(',', ''))
+        if matches:
+            return matches[-1]
+
+    list_match = re.search(r'\[[^\]]*\]', answer)
+    if list_match is not None:
+        return list_match.group(0)
+
+    lines = [part.strip() for part in answer.splitlines() if part.strip()]
+    if lines:
+        return lines[-1]
+    return answer
+
+
 FAIL_MSG = 'Failed to obtain answer via API.'
 
 
@@ -226,8 +258,9 @@ Extracted answer: B
 
 def build_mathvista_gpt4_prompt(line):
     task_description = """
-Please read the following example.
-Then extract the answer from the model response and type it at the end of the prompt.\n
+Please read the following examples.
+Then extract the final answer from the model response.
+You must output only the extracted answer, with no explanation or extra text.\n
 """
     question = line['question']
     prediction = str(line['prediction'])
@@ -235,8 +268,17 @@ Then extract the answer from the model response and type it at the end of the pr
     examples = get_gpt4_ICE()
     for example in examples:
         prompt += example + '\n'
-    prompt += question + '\n'
-    prompt += 'Model respone: ' + prediction
+    prompt += 'Question: ' + question + '\n'
+    if line.get('question_type') == 'multi_choice' and line.get('choices'):
+        try:
+            choices = eval(line['choices'])
+        except Exception:
+            choices = line['choices']
+        if isinstance(choices, (list, tuple)):
+            prompt += 'Choices: ' + ' '.join(
+                f'({chr(65 + idx)}) {choice}' for idx, choice in enumerate(choices)
+            ) + '\n'
+    prompt += 'Model response: ' + prediction + '\n'
     prompt += 'Extracted answer:'
     return prompt
 
@@ -333,8 +375,35 @@ def load_env():
         logging.error(f'Did not detect the .env file at {pth}, failed to load. ')
         return
 
-    from dotenv import dotenv_values
-    values = dotenv_values(pth)
+    try:
+        from dotenv import dotenv_values
+        values = dotenv_values(pth)
+    except ImportError:
+        values = {}
+        with open(pth, 'r', encoding='utf-8') as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, value = line.split('=', 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                if key:
+                    values[key] = value
+
+    # Treat .env as the source of truth for judge networking knobs so stale shell
+    # exports do not silently leak into eval runs.
+    managed_keys = [
+        'JUDGE_PROXY',
+        'JUDGE_HTTP_PROXY',
+        'JUDGE_HTTPS_PROXY',
+        'JUDGE_ALL_PROXY',
+        'JUDGE_TRUST_ENV_PROXY',
+    ]
+    for key in managed_keys:
+        if key not in values and key in os.environ:
+            os.environ.pop(key, None)
+
     for k, v in values.items():
         if v is not None and len(v):
             os.environ[k] = v
@@ -347,12 +416,18 @@ def get_args():
     return parser.parse_args()
 
 def build_judge(**kwargs):
-    from .api import OpenAIWrapper
+    try:
+        from .api import OpenAIWrapper
+    except ModuleNotFoundError:
+        return None
     model = kwargs.pop('model', None)
     kwargs.pop('nproc', None)
     load_env()
-    LOCAL_LLM = os.environ.get('LOCAL_LLM', None)
-    if LOCAL_LLM is None:
+    local_llm = (
+        os.environ.get('GLM_MODEL')
+        or os.environ.get('LOCAL_LLM')
+    )
+    if local_llm is None:
         model_map = {
             'gpt-4-turbo': 'gpt-4-1106-preview',
             'gpt-4-0613': 'gpt-4-0613',
@@ -369,7 +444,7 @@ def build_judge(**kwargs):
         }
         model_version = model_map[model]
     else:
-        model_version = LOCAL_LLM
+        model_version = local_llm
         
     model = OpenAIWrapper(model_version, **kwargs)
     return model
@@ -436,46 +511,58 @@ def track_progress_rich(
     return results
 
 def evaluate(eval_file, **judge_kwargs):
+        load_env()
 
         model = judge_kwargs['model']
         suffix = eval_file.split('.')[-1]
         storage = eval_file.replace(f'.{suffix}', f'_{model}.xlsx')
         tmp_file = eval_file.replace(f'.{suffix}', f'_{model}.pkl')
-        nproc = judge_kwargs.pop('nproc', 50)
+        judge_model = (
+            os.environ.get('GLM_MODEL')
+            or os.environ.get('LOCAL_LLM')
+            or model
+            or ''
+        )
+        default_nproc = 1 if 'flash' in str(judge_model).lower() else 50
+        default_max_tokens = 512 if 'flash' in str(judge_model).lower() else 128
+        nproc = judge_kwargs.pop('nproc', int(os.environ.get('JUDGE_NPROC', default_nproc)))
+        judge_max_tokens = int(os.environ.get('JUDGE_MAX_TOKENS', default_max_tokens))
         # nproc = 1
 
         if not osp.exists(storage):
             data = load(eval_file)
-            # import pdb; pdb.set_trace()
-            model = build_judge(max_tokens=128, **judge_kwargs)
-            # assert model.working(), ('MathVista evaluation requires a working OPENAI API\n' + DEBUG_MESSAGE)
-            lt = len(data)
-            lines = [data.iloc[i] for i in range(lt)]
-            tups = [(model, line) for line in lines]
-            indices = [line['index'] for line in lines]
+            model = build_judge(max_tokens=judge_max_tokens, **judge_kwargs)
+            if model is None:
+                data['res'] = data['prediction']
+                data['log'] = ['Local fallback'] * len(data)
+            else:
+                lt = len(data)
+                lines = [data.iloc[i] for i in range(lt)]
+                tups = [(model, line) for line in lines]
+                indices = [line['index'] for line in lines]
 
-            ans = {}
-            if osp.exists(tmp_file):
-                ans = load(tmp_file)
-            tups = [x for x, i in zip(tups, indices) if i not in ans]
-            indices = [i for i in indices if i not in ans]
+                ans = {}
+                if osp.exists(tmp_file):
+                    ans = load(tmp_file)
+                tups = [x for x, i in zip(tups, indices) if i not in ans]
+                indices = [i for i in indices if i not in ans]
 
-            if len(indices):
-                new_results = track_progress_rich(
-                    MathVista_auxeval,
-                    tups,
-                    nproc=nproc,
-                    chunksize=nproc,
-                    keys=indices,
-                    save=tmp_file,
-                )
-                ans = load(tmp_file)
-                for k, v in zip(indices, new_results):
-                    assert k in ans
-                    assert ans[k]['log'] == v['log'] and ans[k]['res'] == v['res']
+                if len(indices):
+                    new_results = track_progress_rich(
+                        MathVista_auxeval,
+                        tups,
+                        nproc=nproc,
+                        chunksize=nproc,
+                        keys=indices,
+                        save=tmp_file,
+                    )
+                    ans = load(tmp_file)
+                    for k, v in zip(indices, new_results):
+                        assert k in ans
+                        assert ans[k]['log'] == v['log'] and ans[k]['res'] == v['res']
 
-            data['res'] = [ans[idx]['res'] for idx in data['index']]
-            data['log'] = [ans[idx]['log'] for idx in data['index']]
+                data['res'] = [ans[idx]['res'] for idx in data['index']]
+                data['log'] = [ans[idx]['log'] for idx in data['index']]
             dump(data, storage)
 
         score = MathVista_acc(storage)
@@ -575,7 +662,14 @@ def dump(data, f, **kwargs):
 
 if __name__ == "__main__":
     args = get_args()
+    load_env()
 
     if args.result_file is not None:
-        kwargs={'verbose': True, 'retry': 3, 'model': 'gpt-4o-mini'}
+        judge_model = (
+            os.environ.get('GLM_MODEL')
+            or os.environ.get('LOCAL_LLM')
+            or 'gpt-4o-mini'
+        )
+        judge_retry = int(os.environ.get('JUDGE_RETRY', 3))
+        kwargs={'verbose': True, 'retry': judge_retry, 'model': judge_model}
         evaluate(args.result_file, **kwargs)

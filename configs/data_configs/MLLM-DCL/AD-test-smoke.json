@@ -1,0 +1,8 @@
+[
+  {
+    "image": "images/drivelm/stitch/4c5c675340d14cd88a65b5e22eb9c9c1_ecd361f4874c44ed971631aa8aed0fff.jpg",
+    "question_id": "141822",
+    "text": "Would <c5,CAM_BACK,[386, 879]> be in the moving direction of the ego vehicle? Objects are encoded using <c,CAM,[cx,cy]>, where c is the identifier, CAM indicates the camera where the object\u2019s center point is situated, and x, y represent the horizontal and vertical coordinates of the center point of the 2D bounding box.",
+    "answer": "No."
+  }
+]

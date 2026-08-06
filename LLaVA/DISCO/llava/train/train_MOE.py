@@ -24,7 +24,11 @@ from typing import Dict, Optional, Sequence, List
 
 import torch
 import sys
-sys.path.append('/your_path/MCITlib_v3/LLaVA/DISCO')
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 import transformers
 import subprocess
 
@@ -783,15 +787,7 @@ def load_model_from_previous_task(model, previous_task_model_path):
     if os.path.exists(os.path.join(previous_task_model_path, 'non_lora_trainables.bin')):
         non_lora_trainables = torch.load(os.path.join(previous_task_model_path, 'non_lora_trainables.bin'), map_location='cpu')
     else:
-        # this is probably from HF Hub
-        from huggingface_hub import hf_hub_download
-        def load_from_hf(repo_id, filename, subfolder=None):
-            cache_file = hf_hub_download(
-                repo_id=repo_id,
-                filename=filename,
-                subfolder=subfolder)
-            return torch.load(cache_file, map_location='cpu')
-        non_lora_trainables = load_from_hf(previous_task_model_path, 'non_lora_trainables.bin')
+        raise FileNotFoundError(f"Missing local non_lora_trainables.bin at {previous_task_model_path}")
     non_lora_trainables = {(k[11:] if k.startswith('base_model.') else k): v for k, v in non_lora_trainables.items()}
     if any(k.startswith('model.model.') for k in non_lora_trainables):
         non_lora_trainables = {(k[6:] if k.startswith('model.') else k): v for k, v in non_lora_trainables.items()}
@@ -834,25 +830,39 @@ def train():
         ))
 
     if model_args.vision_tower is not None:
+        config = transformers.AutoConfig.from_pretrained(
+            model_args.model_name_or_path,
+            trust_remote_code=True,
+            local_files_only=True,
+        )
+        config.mm_vision_tower = model_args.vision_tower
+        config.mm_text_tower = model_args.text_tower
+        config.mm_vision_select_layer = model_args.mm_vision_select_layer
+        config.mm_text_select_layer = model_args.mm_text_select_layer
+        config.mm_vision_select_feature = getattr(model_args, 'mm_vision_select_feature', 'patch')
+        config.mm_projector_type = getattr(model_args, 'mm_projector_type', getattr(config, 'mm_projector_type', 'linear'))
         if 'mpt' in model_args.model_name_or_path:
-            config = transformers.AutoConfig.from_pretrained(model_args.model_name_or_path, trust_remote_code=True)
             config.attn_config['attn_impl'] = training_args.mpt_attn_impl
             model = LlavaMPTForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
                 config=config,
                 cache_dir=training_args.cache_dir,
+                local_files_only=True,
                 **bnb_model_from_pretrained_args
             )
         else:
             model = LlavaLlamaForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
+                config=config,
                 cache_dir=training_args.cache_dir,
+                local_files_only=True,
                 **bnb_model_from_pretrained_args,
             )
     else:
         model = transformers.LlamaForCausalLM.from_pretrained(
             model_args.model_name_or_path,
             cache_dir=training_args.cache_dir,
+            local_files_only=True,
             **bnb_model_from_pretrained_args
         )
     model.config.use_cache = False
@@ -902,7 +912,8 @@ def train():
             model_args.model_name_or_path,
             cache_dir=training_args.cache_dir,
             model_max_length=training_args.model_max_length,
-            padding_side="right"
+            padding_side="right",
+            local_files_only=True,
         )
     else:
         tokenizer = transformers.AutoTokenizer.from_pretrained(
@@ -911,6 +922,7 @@ def train():
             model_max_length=training_args.model_max_length,
             padding_side="right",
             use_fast=True,
+            local_files_only=True,
         )
 
     if model_args.version == "v0":
@@ -991,6 +1003,7 @@ def train():
             model_max_length=training_args.model_max_length,
             padding_side="right",
             use_fast=True,
+            local_files_only=True,
         )
 
     model.set_clip_tokenizer(clip_tokenizer)

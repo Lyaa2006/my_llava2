@@ -30,6 +30,7 @@ IFS=',' read -ra GPULIST <<< "$CUDA_VISIBLE_DEVICES"
 CHUNKS=${#GPULIST[@]}
 
 RESULT_DIR="$RESULT_PATH/$TASK"
+mkdir -p "$RESULT_DIR/$STAGE"
 
 for IDX in $(seq 0 $((CHUNKS-1))); do
     CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python -m llava.eval.CoIN.model_ucit_router \

@@ -9,9 +9,24 @@ PROMPT_VERSION=v1
 MODEL_CONFIG=$1
 DATA_CONFIG=$2
 TRAIN_CONFIG=$3
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+HIDE_ROOT=$(cd "${SCRIPT_DIR}/../../.." && pwd)
+REPO_ROOT=$(cd "${SCRIPT_DIR}/../../../../.." && pwd)
 
 read_config() {
     python3 -c "import json; print(json.load(open('$1'))['$2'])"
+}
+
+read_config_default() {
+    python3 - "$1" "$2" "$3" <<'PY'
+import json
+import sys
+
+path, key, default = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(path) as f:
+    data = json.load(f)
+print(data.get(key, default))
+PY
 }
 
 NNODES=${NNODES:-1}
@@ -30,6 +45,10 @@ EPOCH=$(read_config "$TRAIN_CONFIG" epoch)
 BATCH_SIZE=$(read_config "$TRAIN_CONFIG" batch_size)
 GRAD_ACC=$(read_config "$TRAIN_CONFIG" grad_acc)
 LR=$(read_config "$TRAIN_CONFIG" lr)
+SAVE_STEPS=$(read_config_default "$TRAIN_CONFIG" save_steps 50000)
+MODEL_MAX_LENGTH=$(read_config_default "$TRAIN_CONFIG" model_max_length 2048)
+DATALOADER_NUM_WORKERS=$(read_config_default "$TRAIN_CONFIG" dataloader_num_workers 4)
+MAX_STEPS=$(read_config_default "$TRAIN_CONFIG" max_steps -1)
 
 GPU_LIST=""
 for i in $(seq 0 $((GPU_NUM-1))); do
@@ -37,8 +56,38 @@ for i in $(seq 0 $((GPU_NUM-1))); do
 done
 GPU_LIST=${GPU_LIST%,}
 
+if [ -z "${MASTER_PORT:-}" ]; then
+    MASTER_PORT=$(python3 - <<'PY'
+import socket
+
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+PY
+)
+fi
+
+mkdir -p "$OUTPUT_DIR"
+LOG_ROOT=${MCIT_LOG_ROOT:-$REPO_ROOT/logs/InternVL/HiDe}
+mkdir -p "$LOG_ROOT/train"
+TRAIN_LOG_NAME=$(python3 - "$TRAIN_CONFIG" <<'PY'
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+print("_".join(path.parts[-4:]).replace(".json", ".log"))
+PY
+)
+CENTRAL_TRAIN_LOG="$LOG_ROOT/train/$TRAIN_LOG_NAME"
+
+EXTRA_ARGS=""
+if [ "$MAX_STEPS" -gt 0 ]; then
+    EXTRA_ARGS="$EXTRA_ARGS --max_steps $MAX_STEPS"
+fi
+
 echo "Begin running..."
-torchrun --nnodes=${NNODES} --nproc_per_node=${GPU_NUM} --master_port 9001 llava/train/train_mem.py \
+torchrun --nnodes=${NNODES} --nproc_per_node=${GPU_NUM} --master_port "${MASTER_PORT:-9001}" llava/train/train_mem.py \
     --deepspeed ./scripts/zero2.json \
     --lora_enable True --lora_r $RANK --lora_alpha $((RANK * 2)) \
     --expert_num $EXPERT \
@@ -65,16 +114,17 @@ torchrun --nnodes=${NNODES} --nproc_per_node=${GPU_NUM} --master_port 9001 llava
     --gradient_accumulation_steps $GRAD_ACC \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
-    --save_steps 50000 \
+    --save_steps $SAVE_STEPS \
     --learning_rate $LR \
     --weight_decay 0. \
     --warmup_ratio 0.03 \
     --lr_scheduler_type "cosine" \
     --logging_steps 1 \
     --tf32 True \
-    --model_max_length 2048 \
+    --model_max_length $MODEL_MAX_LENGTH \
     --gradient_checkpointing True \
-    --dataloader_num_workers 4 \
+    --dataloader_num_workers $DATALOADER_NUM_WORKERS \
     --lazy_preprocess True \
     --report_to none \
-    | tee ${OUTPUT_DIR}/train.log
+    $EXTRA_ARGS \
+    | tee "${OUTPUT_DIR}/train.log" "$CENTRAL_TRAIN_LOG"

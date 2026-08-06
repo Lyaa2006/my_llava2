@@ -149,6 +149,55 @@ class LLaVATrainer(Trainer):
                 except AttributeError:
                     pass
 
+    def _unwrap_model(self, model):
+        return getattr(model, "module", model)
+
+    def _get_transformer_layers(self, model):
+        wrapped = self._unwrap_model(model)
+        candidates = [
+            wrapped,
+            getattr(wrapped, "model", None),
+            getattr(getattr(wrapped, "base_model", None), "model", None),
+            getattr(getattr(getattr(wrapped, "base_model", None), "model", None), "model", None),
+        ]
+        if hasattr(wrapped, "get_model"):
+            candidates.append(wrapped.get_model())
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            if hasattr(candidate, "layers"):
+                return candidate.layers
+            inner_model = getattr(candidate, "model", None)
+            if inner_model is not None and hasattr(inner_model, "layers"):
+                return inner_model.layers
+        raise ValueError("Could not locate transformer layers for boundary alignment.")
+
+    def _resolve_decoder_layer_index(self, model, layer_idx):
+        layers = self._get_transformer_layers(model)
+        num_layers = len(layers)
+        layer_idx = int(layer_idx)
+        if layer_idx < 0:
+            layer_idx += num_layers
+        if layer_idx < 0 or layer_idx >= num_layers:
+            raise ValueError(f"Resolved align layer {layer_idx} is outside [0, {num_layers}).")
+        return layer_idx
+
+    def _run_with_layer_hook(self, model, forward_kwargs, layer_idx):
+        layers = self._get_transformer_layers(model)
+        captured = {}
+
+        def hook_fn(_module, _inputs, output):
+            captured["hidden_states"] = output[0] if isinstance(output, tuple) else output
+
+        hook = layers[layer_idx].register_forward_hook(hook_fn)
+        try:
+            outputs = model(**forward_kwargs)
+        finally:
+            hook.remove()
+        if "hidden_states" not in captured:
+            raise RuntimeError(f"Failed to capture hidden states for align layer {layer_idx}.")
+        return outputs, captured["hidden_states"]
+
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         if self.train_dataset is None or not has_length(self.train_dataset):
             return None
@@ -297,6 +346,61 @@ class LLaVATrainer(Trainer):
             padded[idx, :seq_len] = mask[:seq_len].to(device=device, dtype=torch.bool)
         return padded
 
+    def _masked_mean_pool(self, hidden_states, mask):
+        if hidden_states.shape[1] != mask.shape[1]:
+            shared_seq_len = min(hidden_states.shape[1], mask.shape[1])
+            padding_side = getattr(self._unwrap_model(self.model).config, "tokenizer_padding_side", "right")
+            if padding_side == "left":
+                hidden_states = hidden_states[:, -shared_seq_len:]
+                mask = mask[:, -shared_seq_len:]
+            else:
+                hidden_states = hidden_states[:, :shared_seq_len]
+                mask = mask[:, :shared_seq_len]
+        mask = mask.unsqueeze(-1).to(dtype=hidden_states.dtype)
+        return (hidden_states * mask).sum(dim=1) / mask.sum(dim=1).clamp_min(1.0)
+
+    def _prepare_answer_multimodal_inputs(self, model, inputs):
+        wrapped = self._unwrap_model(model)
+        return wrapped.prepare_inputs_labels_for_multimodal(
+            inputs["input_ids"],
+            inputs.get("position_ids"),
+            inputs["attention_mask"],
+            None,
+            inputs["labels"],
+            inputs.get("images"),
+            return_token_masks=True,
+        )
+
+    def _compute_boundary_align_loss(self, boundary_hidden, image_token_mask, text_token_mask):
+        zero = boundary_hidden.new_zeros(())
+        if image_token_mask is None or text_token_mask is None:
+            return zero, zero, zero
+
+        shared_seq_len = min(boundary_hidden.shape[1], image_token_mask.shape[1], text_token_mask.shape[1])
+        padding_side = getattr(self._unwrap_model(self.model).config, "tokenizer_padding_side", "right")
+        if padding_side == "left":
+            boundary_hidden = boundary_hidden[:, -shared_seq_len:]
+            image_token_mask = image_token_mask[:, -shared_seq_len:]
+            text_token_mask = text_token_mask[:, -shared_seq_len:]
+        else:
+            boundary_hidden = boundary_hidden[:, :shared_seq_len]
+            image_token_mask = image_token_mask[:, :shared_seq_len]
+            text_token_mask = text_token_mask[:, :shared_seq_len]
+
+        image_token_mask = image_token_mask.to(device=boundary_hidden.device, dtype=torch.bool)
+        text_token_mask = text_token_mask.to(device=boundary_hidden.device, dtype=torch.bool)
+        valid_samples = image_token_mask.any(dim=1) & text_token_mask.any(dim=1)
+        if not torch.any(valid_samples):
+            return zero, zero, zero
+
+        pooled_image = self._masked_mean_pool(boundary_hidden.float(), image_token_mask)
+        pooled_text = self._masked_mean_pool(boundary_hidden.float(), text_token_mask)
+        pooled_image = F.normalize(pooled_image[valid_samples], dim=-1)
+        pooled_text = F.normalize(pooled_text[valid_samples], dim=-1)
+        cosine = (pooled_image * pooled_text).sum(dim=-1).clamp(-1.0, 1.0)
+        align_loss = (1.0 - cosine).mean()
+        return align_loss, valid_samples.float().sum(), cosine.mean()
+
     def _extract_description_states(self, model, inputs):
         with self._temporary_anchor_update(model, enabled=False):
             description_outputs = model(
@@ -381,6 +485,8 @@ class LLaVATrainer(Trainer):
         standard_loss,
         description_focus_loss,
         description_energy_loss,
+        struct_loss,
+        align_loss,
         valid_token_count,
         base_valid_token_count,
         shared_seq_len,
@@ -391,6 +497,8 @@ class LLaVATrainer(Trainer):
         non_key_density,
         focus_ratio,
         mean_change,
+        align_valid_samples,
+        align_cosine,
     ):
         logging_steps = max(1, int(getattr(self.args, "logging_steps", 1) or 1))
         global_step = int(getattr(self.state, "global_step", 0))
@@ -402,18 +510,25 @@ class LLaVATrainer(Trainer):
 
         focus_weight = float(getattr(self.args, "description_focus_weight", 0.0))
         energy_weight = float(getattr(self.args, "description_energy_weight", 0.0))
+        align_weight = float(getattr(self.args, "align_loss_weight", 0.0))
         ce_weight = float(getattr(self.args, "standard_ce_weight", 1.0))
         base_valid = base_valid_token_count.detach().float().clamp_min(1.0)
         used_valid = valid_token_count.detach().float()
 
         self.log({
             "loss/total": total_loss.detach().float().item(),
+            "loss/ce": standard_loss.detach().float().item(),
             "loss/standard_ce": standard_loss.detach().float().item(),
+            "loss/focus": description_focus_loss.detach().float().item(),
             "loss/description_focus": description_focus_loss.detach().float().item(),
+            "loss/energy": description_energy_loss.detach().float().item(),
             "loss/description_energy": description_energy_loss.detach().float().item(),
+            "loss/struct": struct_loss.detach().float().item(),
+            "loss/align": align_loss.detach().float().item(),
             "loss_weighted/standard_ce": (standard_loss.detach().float() * ce_weight).item(),
             "loss_weighted/description_focus": (description_focus_loss.detach().float() * focus_weight).item(),
             "loss_weighted/description_energy": (description_energy_loss.detach().float() * energy_weight).item(),
+            "loss_weighted/align": (align_loss.detach().float() * align_weight).item(),
             "description/align_token_fraction": (used_valid / base_valid).item(),
             "description/align_tokens": used_valid.item(),
             "description/base_valid_tokens": base_valid_token_count.detach().float().item(),
@@ -425,25 +540,70 @@ class LLaVATrainer(Trainer):
             "description/shared_seq_len": float(shared_seq_len),
             "description/reference_samples": float(reference_sample_count),
             "description/reference_sample_fraction": float(reference_sample_count) / max(float(batch_sample_count), 1.0),
+            "align/valid_samples": align_valid_samples.detach().float().item(),
+            "align/cosine_mean": align_cosine.detach().float().item(),
             "config/description_focus_weight": focus_weight,
             "config/description_energy_weight": energy_weight,
+            "config/align_loss_weight": align_weight,
+            "config/align_boundary_layer": int(getattr(self.args, "align_boundary_layer", 15)),
             "config/standard_ce_weight": ce_weight,
         })
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         if not getattr(self.args, "enable_description_cl", False) or "description_input_ids" not in inputs:
             return super().compute_loss(model, inputs, return_outputs=return_outputs)
-
-        standard_outputs = model(
-            input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"],
-            labels=inputs["labels"],
-            images=inputs.get("images"),
-            return_dict=True,
-            output_hidden_states=False,
-            use_cache=False,
-        )
+        enable_boundary_align = bool(getattr(self.args, "enable_boundary_align", False))
+        boundary_align_loss = None
+        if enable_boundary_align:
+            (
+                standard_input_ids,
+                standard_position_ids,
+                standard_attention_mask,
+                standard_past_key_values,
+                standard_inputs_embeds,
+                standard_labels,
+                image_token_mask,
+                text_token_mask,
+            ) = self._prepare_answer_multimodal_inputs(model, inputs)
+            align_layer_idx = self._resolve_decoder_layer_index(
+                model,
+                getattr(self.args, "align_boundary_layer", 15),
+            )
+            standard_outputs, boundary_hidden = self._run_with_layer_hook(
+                model,
+                {
+                    "input_ids": standard_input_ids,
+                    "attention_mask": standard_attention_mask,
+                    "position_ids": standard_position_ids,
+                    "past_key_values": standard_past_key_values,
+                    "inputs_embeds": standard_inputs_embeds,
+                    "labels": standard_labels,
+                    "return_dict": True,
+                    "output_hidden_states": False,
+                    "use_cache": False,
+                },
+                align_layer_idx,
+            )
+            boundary_align_loss, align_valid_samples, align_cosine = self._compute_boundary_align_loss(
+                boundary_hidden,
+                image_token_mask,
+                text_token_mask,
+            )
+        else:
+            standard_outputs = model(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
+                labels=inputs["labels"],
+                images=inputs.get("images"),
+                return_dict=True,
+                output_hidden_states=False,
+                use_cache=False,
+            )
+            align_valid_samples = standard_outputs.loss.new_zeros(())
+            align_cosine = standard_outputs.loss.new_zeros(())
         standard_loss = standard_outputs.loss
+        if boundary_align_loss is None:
+            boundary_align_loss = standard_loss.new_zeros(())
 
         description_states, description_key_masks = self._extract_description_states(model, inputs)
         has_reference_states = (
@@ -514,10 +674,14 @@ class LLaVATrainer(Trainer):
             focus_ratio = standard_loss.new_zeros(())
             mean_change = standard_loss.new_zeros(())
 
-        total_loss = (
+        struct_loss = (
             self.args.description_focus_weight * description_focus_loss
             + self.args.description_energy_weight * description_energy_loss
-            + self.args.standard_ce_weight * standard_loss
+        )
+        total_loss = (
+            self.args.standard_ce_weight * standard_loss
+            + struct_loss
+            + float(getattr(self.args, "align_loss_weight", 0.0)) * boundary_align_loss
         )
 
         self._maybe_log_description_losses(
@@ -525,6 +689,8 @@ class LLaVATrainer(Trainer):
             standard_loss=standard_loss,
             description_focus_loss=description_focus_loss,
             description_energy_loss=description_energy_loss,
+            struct_loss=struct_loss,
+            align_loss=boundary_align_loss,
             valid_token_count=valid_token_count,
             base_valid_token_count=base_valid_token_count,
             shared_seq_len=shared_seq_len,
@@ -535,14 +701,18 @@ class LLaVATrainer(Trainer):
             non_key_density=non_key_density,
             focus_ratio=focus_ratio,
             mean_change=mean_change,
+            align_valid_samples=align_valid_samples,
+            align_cosine=align_cosine,
         )
 
         if return_outputs:
             return total_loss, {
                 "standard_outputs": standard_outputs,
-                "standard_loss": standard_loss.detach(),
-                "description_focus_loss": description_focus_loss.detach(),
-                "description_energy_loss": description_energy_loss.detach(),
+                "loss_ce": standard_loss.detach(),
+                "loss_focus": description_focus_loss.detach(),
+                "loss_energy": description_energy_loss.detach(),
+                "loss_struct": struct_loss.detach(),
+                "loss_align": boundary_align_loss.detach(),
             }
         return total_loss
 

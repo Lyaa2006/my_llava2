@@ -1,8 +1,8 @@
 {
-  "gpu_num": 2,
+  "gpu_num": 4,
   "stage": "HiDe-task2",
-  "model_path": "/your_ckpts_path/MCITlib/MLLM-ACL/LLaVA/HiDe/Task2_llava_lora",
-  "result_path": "./results/ACL/each_dataset",
-  "text_tower": "/your_model_path/clip-vit-large-patch14-336",
+  "model_path": "/mnt/lyaa/MCITlib/checkpoints/MLLM-ACL/LLaVA/HiDe/Task2_llava_lora",
+  "result_path": "/mnt/lyaa/MCITlib/results/MLLM-ACL/LLaVA/HiDe/each_dataset",
+  "text_tower": "/mnt/lyaa/my_llava/clip-vit-large-patch14-336",
   "num_task": 4
 }

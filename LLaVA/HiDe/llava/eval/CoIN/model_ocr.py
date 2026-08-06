@@ -114,17 +114,28 @@ def eval_model(args):
         # print(input_ids)
         # import time
         # time.sleep(100)
-        with torch.inference_mode():
-            output_ids = model.generate(
-                input_ids,
-                images=image_tensor.to(dtype=torch.float16, device='cuda'),
-                do_sample=False,
-                temperature=0,
-                top_p=None,
-                num_beams=1,
-                max_new_tokens=2048,
-                stopping_criteria=[stopping_criteria],
-                use_cache=True)
+        try:
+            with torch.inference_mode():
+                output_ids = model.generate(
+                    input_ids,
+                    images=image_tensor.to(dtype=torch.float16, device='cuda'),
+                    do_sample=False,
+                    temperature=0,
+                    top_p=None,
+                    num_beams=1,
+                    max_new_tokens=args.max_new_tokens,
+                    stopping_criteria=[stopping_criteria],
+                    use_cache=True)
+        except torch.cuda.OutOfMemoryError as exc:
+            print(f"[skip-oom] question_id={idx} image={line.get('image')} reason={exc}", flush=True)
+            torch.cuda.empty_cache()
+            continue
+        except RuntimeError as exc:
+            if "out of memory" not in str(exc).lower():
+                raise
+            print(f"[skip-oom] question_id={idx} image={line.get('image')} reason={exc}", flush=True)
+            torch.cuda.empty_cache()
+            continue
 
         input_token_len = input_ids.shape[1]
         n_diff_input_output = (input_ids != output_ids[:, :input_token_len]).sum().item()
@@ -142,7 +153,7 @@ def eval_model(args):
                                    "category": category,
                                    "model_id": model_name,
                                    "metadata": {}}) + "\n")
-        # ans_file.flush()
+        ans_file.flush()
         
         
     ans_file.close()
@@ -160,7 +171,7 @@ if __name__ == "__main__":
     parser.add_argument("--temperature", type=float, default=0)
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
-    parser.add_argument("--max_new_tokens", type=int, default=128)
+    parser.add_argument("--max_new_tokens", type=int, default=2048)
     parser.add_argument("--text-tower", type=str)
     parser.add_argument("--num-task", type=int, default=0)
     args = parser.parse_args()

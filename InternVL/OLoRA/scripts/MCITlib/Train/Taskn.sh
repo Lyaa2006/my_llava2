@@ -1,5 +1,6 @@
 #!/bin/bash
 
+set -euo pipefail
 set -x
 
 ################## VICUNA ##################
@@ -30,6 +31,8 @@ BATCH_SIZE=$(read_config "$TRAIN_CONFIG" batch_size)
 GRAD_ACC=$(read_config "$TRAIN_CONFIG" grad_acc)
 LR=$(read_config "$TRAIN_CONFIG" lr)
 GRAD_CKPT=$(read_config "$TRAIN_CONFIG" gradient_checkpointing)
+
+mkdir -p "$OUTPUT_DIR"
 
 GPU_LIST=""
 for i in $(seq 0 $((GPU_NUM-1))); do

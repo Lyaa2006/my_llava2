@@ -2,7 +2,7 @@
   "train_path": "/mnt/lyaa/MCITlib/configs/data_configs/UCIT/VizWiz-train-smoke.json",
   "replay_path": "/mnt/lyaa/my_llava/UCIT/VizWiz/replay.json",
   "router_path": "/mnt/lyaa/my_llava/UCIT/VizWiz/router.json",
-  "test_path": "/mnt/lyaa/my_llava/UCIT/VizWiz/test_3000.json",
+  "test_path": "/mnt/lyaa/MCITlib/configs/data_configs/UCIT/VizWiz-test-smoke.json",
   "anno_path": "/mnt/lyaa/MCITlib/configs/data_configs/UCIT/VizWiz-anno-smoke.json",
   "train_folder": "/mnt/lyaa/my_llava/UCIT/datasets",
   "router_folder": "/mnt/lyaa/my_llava/UCIT/datasets",

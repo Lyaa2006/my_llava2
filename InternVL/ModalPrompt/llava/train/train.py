@@ -15,7 +15,11 @@
 #    limitations under the License.
 
 import sys
-sys.path.append('/your_path/MCITlib_v3/InternVL/ModalPrompt')
+from pathlib import Path
+
+MODALPROMPT_ROOT = Path(__file__).resolve().parents[2]
+if str(MODALPROMPT_ROOT) not in sys.path:
+    sys.path.append(str(MODALPROMPT_ROOT))
 import os
 import copy
 from dataclasses import dataclass, field
@@ -119,6 +123,7 @@ class TrainingArguments(transformers.TrainingArguments):
     lora_weight_path: str = ""
     lora_bias: str = "none"
     pt_enable: bool = False
+    mm_projector_lr: Optional[float] = None
     group_by_modality_length: bool = field(default=False)
 
 
@@ -1002,6 +1007,7 @@ def train(attn_implementation=None):
             model.get_model().mm_projector.to(dtype=compute_dtype, device=training_args.device)
 
         model.config.mm_use_im_start_end = data_args.mm_use_im_start_end = model_args.mm_use_im_start_end
+        model.config.mm_projector_lr = training_args.mm_projector_lr
         training_args.use_im_start_end = model_args.mm_use_im_start_end
         model.config.mm_use_im_patch_token = model_args.mm_use_im_patch_token
         model.initialize_vision_tokenizer(model_args, tokenizer=tokenizer)

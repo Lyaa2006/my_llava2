@@ -3,7 +3,11 @@ import json
 
 def process_cl_results():
     # 1. 基础路径
-    base_path = "/your_path/MCITlib_v3/LLaVA/MR-LoRA/results/UCIT/each_dataset"
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    base_path = os.environ.get(
+        "MCIT_RESULTS_UCIT",
+        os.path.join(repo_root, "results", "UCIT", "each_dataset"),
+    )
     
     # 2. 定义 CL 任务顺序 (Task ID -> Domain Name & Pred Code)
     # 映射结构: Pred Code -> (Domain Folder Name, Task ID)

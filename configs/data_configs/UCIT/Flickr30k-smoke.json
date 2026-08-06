@@ -2,7 +2,7 @@
   "train_path": "/mnt/lyaa/MCITlib/configs/data_configs/UCIT/Flickr30k-train-smoke.json",
   "replay_path": "/mnt/lyaa/my_llava/UCIT/Flickr30k/replay.json",
   "router_path": "/mnt/lyaa/my_llava/UCIT/Flickr30k/router.json",
-  "test_path": "/mnt/lyaa/my_llava/UCIT/Flickr30k/test_3000.json",
+  "test_path": "/mnt/lyaa/MCITlib/configs/data_configs/UCIT/Flickr30k-test-smoke.json",
   "anno_path": "/mnt/lyaa/MCITlib/configs/data_configs/UCIT/Flickr30k-anno-smoke.json",
   "train_folder": "/mnt/lyaa/my_llava/UCIT/datasets",
   "router_folder": "/mnt/lyaa/my_llava/UCIT/datasets",

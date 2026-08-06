@@ -140,7 +140,7 @@ if __name__ == "__main__":
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
-    parser.add_argument("--clip-text-tower", type=str, default="/your_model_path/clip-vit-large-patch14-336")
+    parser.add_argument("--clip-text-tower", type=str, default="/mnt/lyaa/MCITlib/models/InternVL/clip-vit-large-patch14-336")
     parser.add_argument("--num-task", type=int, default=0)
     args = parser.parse_args()
 

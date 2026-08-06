@@ -1,0 +1,16 @@
+[
+  {
+    "image": "images/MapQA_image_28258_1.png",
+    "question_id": "MapQA_image_28258_1.png",
+    "conversations": [
+      {
+        "from": "human",
+        "value": "<image>\nWhat is the value of South Dakota?\nQuick response, please."
+      },
+      {
+        "from": "gpt",
+        "value": "59280-63664."
+      }
+    ]
+  }
+]

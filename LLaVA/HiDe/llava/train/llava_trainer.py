@@ -1,5 +1,6 @@
 import os
 import torch
+import torch.nn as nn
 
 from torch.utils.data import Sampler
 
@@ -9,10 +10,23 @@ from transformers.trainer import (
     get_parameter_names,
     has_length,
     ALL_LAYERNORM_LAYERS,
-    ShardedDDPOption,
     logger,
 )
 from typing import List, Optional
+
+try:
+    from transformers.trainer import ShardedDDPOption
+except ImportError:
+    class ShardedDDPOption:
+        SIMPLE = "simple"
+
+
+def is_simple_sharded_ddp(sharded_ddp):
+    if sharded_ddp is None:
+        return False
+    if sharded_ddp == ShardedDDPOption.SIMPLE:
+        return True
+    return str(sharded_ddp).lower().endswith("simple")
 
 
 def maybe_zero_3(param, ignore_status=False, name=None):
@@ -156,7 +170,7 @@ class LLaVATrainer(Trainer):
         """
         if is_sagemaker_mp_enabled():
             return super().create_optimizer()
-        if self.sharded_ddp == ShardedDDPOption.SIMPLE:
+        if is_simple_sharded_ddp(getattr(self, "sharded_ddp", None)):
             return super().create_optimizer()
 
         opt_model = self.model
@@ -212,7 +226,8 @@ class LLaVATrainer(Trainer):
 
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
 
-            if self.sharded_ddp == ShardedDDPOption.SIMPLE:
+            if is_simple_sharded_ddp(getattr(self, "sharded_ddp", None)):
+                from fairscale.optim import OSS
                 self.optimizer = OSS(
                     params=optimizer_grouped_parameters,
                     optim=optimizer_cls,

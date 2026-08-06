@@ -1,0 +1,17 @@
+[
+  {
+    "image": "images/cambrian/2324077.jpg",
+    "conversations": [
+      {
+        "from": "human",
+        "value": "<image>\nHow many zebras are visible?"
+      },
+      {
+        "from": "gpt",
+        "value": "2"
+      }
+    ],
+    "source": "tallyqa_250k.json",
+    "question_id": "cambrian_30155911"
+  }
+]

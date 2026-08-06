@@ -182,6 +182,9 @@ class TrainingArguments(transformers.TrainingArguments):
     description_focus_weight: float = field(default=0.2)
     description_energy_weight: float = field(default=1e-4)
     description_energy_margin: float = field(default=30.0)
+    enable_boundary_align: bool = field(default=False)
+    align_boundary_layer: int = field(default=15)
+    align_loss_weight: float = field(default=0.01)
     standard_ce_weight: float = field(default=1.0)
 
 

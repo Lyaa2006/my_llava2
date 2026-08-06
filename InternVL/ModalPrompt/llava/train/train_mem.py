@@ -8,7 +8,11 @@
 # replace_llama_attn_with_flash_attn()
 
 import sys
-sys.path.append('/your_path/MCITlib_v3/InternVL/ModalPrompt')
+from pathlib import Path
+
+MODALPROMPT_ROOT = Path(__file__).resolve().parents[2]
+if str(MODALPROMPT_ROOT) not in sys.path:
+    sys.path.append(str(MODALPROMPT_ROOT))
 from llava.train.train import train
 
 if __name__ == "__main__":
