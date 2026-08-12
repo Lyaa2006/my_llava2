@@ -118,6 +118,50 @@ class ModelArguments:
 
     task_embedding_dim: Optional[int] = field(default=64)
     expert_num: Optional[int] = field(default=None)
+    use_spectral_image_routing: Optional[bool] = field(default=None)
+    use_spectral_role_prototype: Optional[bool] = field(default=None)
+    role_reset_on_strategy_change: Optional[bool] = field(default=None)
+    use_text_anchor_routing: Optional[bool] = field(default=None)
+    spectral_cutoff: Optional[float] = field(default=None)
+    spectral_low_bins: Optional[int] = field(default=None)
+    spectral_high_bins: Optional[int] = field(default=None)
+    spectral_image_weight: Optional[float] = field(default=None)
+    text_weight: Optional[float] = field(default=None)
+    history_weight: Optional[float] = field(default=None)
+    routing_image_weight: Optional[float] = field(default=None)
+    routing_text_weight: Optional[float] = field(default=None)
+    routing_history_weight: Optional[float] = field(default=None)
+    routing_temperature: Optional[float] = field(default=None)
+    routing_min_similarity: Optional[float] = field(default=None)
+    routing_prior_momentum: Optional[float] = field(default=None)
+    role_top_k: Optional[int] = field(default=None)
+    role_birth_threshold: Optional[float] = field(default=None)
+    role_assignment_strategy: Optional[str] = field(default=None)
+    role_assignment_score_mode: Optional[str] = field(default=None)
+    role_assignment_top_k: Optional[int] = field(default=None)
+    role_assignment_min_similarity: Optional[float] = field(default=None)
+    role_assignment_margin: Optional[float] = field(default=None)
+    role_assignment_pair_weight: Optional[float] = field(default=None)
+    role_member_top_k: Optional[int] = field(default=None)
+    routing_role_prior_weight: Optional[float] = field(default=None)
+    routing_role_member_weight: Optional[float] = field(default=None)
+    routing_role_size_penalty: Optional[float] = field(default=None)
+    routing_role_score_mode: Optional[str] = field(default=None)
+    routing_role_prototype_weight: Optional[float] = field(default=None)
+    routing_early_layers: Optional[int] = field(default=None)
+    routing_early_mode: Optional[str] = field(default=None)
+    routing_early_uniform_mix: Optional[float] = field(default=None)
+    routing_middle_layers: Optional[int] = field(default=None)
+    routing_middle_temperature: Optional[float] = field(default=None)
+    routing_middle_role_gamma: Optional[float] = field(default=None)
+    routing_middle_role_uniform_mix: Optional[float] = field(default=None)
+    routing_middle_task_uniform_mix: Optional[float] = field(default=None)
+    routing_middle_role_margin_low: Optional[float] = field(default=None)
+    routing_middle_role_margin_high: Optional[float] = field(default=None)
+    routing_middle_intra_margin_low: Optional[float] = field(default=None)
+    routing_middle_intra_margin_high: Optional[float] = field(default=None)
+    routing_late_layers: Optional[int] = field(default=None)
+    routing_late_top_k: Optional[int] = field(default=None)
 
 
 @dataclass
@@ -236,8 +280,11 @@ def get_peft_state_non_lora_maybe_zero_3(named_params, require_grad_only=True):
             "text_anchors",
             "image_boundary",
             "text_boundary",
+            "spectral_image_anchors",
+            "spectral_image_boundary",
             "expert_usage_prior",
             "role_image_prototypes",
+            "role_spectral_prototypes",
             "role_text_prototypes",
             "role_task_count",
             "role_usage_prior",
@@ -1354,6 +1401,64 @@ def build_model_config_with_local_towers(model_args, training_args):
         config.mm_text_select_layer = model_args.mm_text_select_layer
     if getattr(model_args, "mm_projector_type", None) is not None:
         config.mm_projector_type = model_args.mm_projector_type
+    routing_config = getattr(config, "relation_routing_config", None)
+    if not isinstance(routing_config, dict):
+        routing_config = {}
+    routing_arg_names = (
+        "use_spectral_image_routing",
+        "use_spectral_role_prototype",
+        "role_reset_on_strategy_change",
+        "use_text_anchor_routing",
+        "spectral_cutoff",
+        "spectral_low_bins",
+        "spectral_high_bins",
+        "spectral_image_weight",
+        "text_weight",
+        "history_weight",
+        "routing_image_weight",
+        "routing_text_weight",
+        "routing_history_weight",
+        "routing_temperature",
+        "routing_min_similarity",
+        "routing_prior_momentum",
+        "role_top_k",
+        "role_birth_threshold",
+        "role_assignment_strategy",
+        "role_assignment_score_mode",
+        "role_assignment_top_k",
+        "role_assignment_min_similarity",
+        "role_assignment_margin",
+        "role_assignment_pair_weight",
+        "role_member_top_k",
+        "routing_role_prior_weight",
+        "routing_role_member_weight",
+        "routing_role_size_penalty",
+        "routing_role_score_mode",
+        "routing_role_prototype_weight",
+        "routing_early_layers",
+        "routing_early_mode",
+        "routing_early_uniform_mix",
+        "routing_middle_layers",
+        "routing_middle_temperature",
+        "routing_middle_role_gamma",
+        "routing_middle_role_uniform_mix",
+        "routing_middle_task_uniform_mix",
+        "routing_middle_role_margin_low",
+        "routing_middle_role_margin_high",
+        "routing_middle_intra_margin_low",
+        "routing_middle_intra_margin_high",
+        "routing_late_layers",
+        "routing_late_top_k",
+    )
+    for arg_name in routing_arg_names:
+        value = getattr(model_args, arg_name, None)
+        if value is not None:
+            routing_config[arg_name] = value
+    config.relation_routing_config = routing_config
+    config.mm_spectral_feature_dim = 768 * (
+        int(routing_config.get("spectral_low_bins", 4))
+        + int(routing_config.get("spectral_high_bins", 4))
+    )
     return config
 
 def train():
@@ -1425,6 +1530,53 @@ def train():
         )
     model.config.use_cache = False
     model.training = True
+    if hasattr(model, "configure_relation_routing"):
+        model.configure_relation_routing(
+            use_spectral_image_routing=model_args.use_spectral_image_routing,
+            use_spectral_role_prototype=model_args.use_spectral_role_prototype,
+            role_reset_on_strategy_change=model_args.role_reset_on_strategy_change,
+            use_text_anchor_routing=model_args.use_text_anchor_routing,
+            spectral_cutoff=model_args.spectral_cutoff,
+            spectral_low_bins=model_args.spectral_low_bins,
+            spectral_high_bins=model_args.spectral_high_bins,
+            spectral_image_weight=model_args.spectral_image_weight,
+            text_weight=model_args.text_weight,
+            history_weight=model_args.history_weight,
+            routing_image_weight=model_args.routing_image_weight,
+            routing_text_weight=model_args.routing_text_weight,
+            routing_history_weight=model_args.routing_history_weight,
+            routing_temperature=model_args.routing_temperature,
+            routing_min_similarity=model_args.routing_min_similarity,
+            routing_prior_momentum=model_args.routing_prior_momentum,
+            role_top_k=model_args.role_top_k,
+            role_birth_threshold=model_args.role_birth_threshold,
+            role_assignment_strategy=model_args.role_assignment_strategy,
+            role_assignment_score_mode=model_args.role_assignment_score_mode,
+            role_assignment_top_k=model_args.role_assignment_top_k,
+            role_assignment_min_similarity=model_args.role_assignment_min_similarity,
+            role_assignment_margin=model_args.role_assignment_margin,
+            role_assignment_pair_weight=model_args.role_assignment_pair_weight,
+            role_member_top_k=model_args.role_member_top_k,
+            routing_role_prior_weight=model_args.routing_role_prior_weight,
+            routing_role_member_weight=model_args.routing_role_member_weight,
+            routing_role_size_penalty=model_args.routing_role_size_penalty,
+            routing_role_score_mode=model_args.routing_role_score_mode,
+            routing_role_prototype_weight=model_args.routing_role_prototype_weight,
+            routing_early_layers=model_args.routing_early_layers,
+            routing_early_mode=model_args.routing_early_mode,
+            routing_early_uniform_mix=model_args.routing_early_uniform_mix,
+            routing_middle_layers=model_args.routing_middle_layers,
+            routing_middle_temperature=model_args.routing_middle_temperature,
+            routing_middle_role_gamma=model_args.routing_middle_role_gamma,
+            routing_middle_role_uniform_mix=model_args.routing_middle_role_uniform_mix,
+            routing_middle_task_uniform_mix=model_args.routing_middle_task_uniform_mix,
+            routing_middle_role_margin_low=model_args.routing_middle_role_margin_low,
+            routing_middle_role_margin_high=model_args.routing_middle_role_margin_high,
+            routing_middle_intra_margin_low=model_args.routing_middle_intra_margin_low,
+            routing_middle_intra_margin_high=model_args.routing_middle_intra_margin_high,
+            routing_late_layers=model_args.routing_late_layers,
+            routing_late_top_k=model_args.routing_late_top_k,
+        )
 
     if model_args.freeze_backbone:
         model.model.requires_grad_(False)

@@ -57,6 +57,16 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self.effective_expert_num = self.expert_num
         self.max_task_slots = 10
         self.max_role_slots = self.max_task_slots
+        saved_relation_config = getattr(config, "relation_routing_config", None)
+        if not isinstance(saved_relation_config, dict):
+            saved_relation_config = {}
+        spectral_low_bins = int(saved_relation_config.get("spectral_low_bins", 4))
+        spectral_high_bins = int(saved_relation_config.get("spectral_high_bins", 4))
+        configured_spectral_dim = getattr(config, "mm_spectral_feature_dim", None)
+        self.spectral_image_dim = int(
+            configured_spectral_dim
+            or 768 * (spectral_low_bins + spectral_high_bins)
+        )
 
         # Initialize anchors
         self.image_anchors = nn.ParameterList(
@@ -73,11 +83,31 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self.text_boundary = nn.ParameterList(
             [nn.Parameter(torch.ones(1, dtype=torch.bfloat16)) for _ in range(self.max_task_slots)]
             )
+        self.spectral_image_anchors = nn.ParameterList(
+            [
+                nn.Parameter(torch.zeros(1, self.spectral_image_dim))
+                for _ in range(self.max_task_slots)
+            ]
+        )
+        self.spectral_image_boundary = nn.ParameterList(
+            [
+                nn.Parameter(torch.zeros(1, dtype=torch.float32))
+                for _ in range(self.max_task_slots)
+            ]
+        )
 
         self.expert_weight = [0., 0., 0., 0., 0., 0., 0., 0.]
         self.expert_usage_prior = nn.Parameter(torch.zeros(self.max_task_slots), requires_grad=False)
         self.role_image_prototypes = nn.ParameterList(
             [nn.Parameter(torch.zeros(1, 768), requires_grad=False) for _ in range(self.max_role_slots)]
+        )
+        self.role_spectral_prototypes = nn.ParameterList(
+            [
+                nn.Parameter(
+                    torch.zeros(1, self.spectral_image_dim), requires_grad=False
+                )
+                for _ in range(self.max_role_slots)
+            ]
         )
         self.role_text_prototypes = nn.ParameterList(
             [nn.Parameter(torch.zeros(1, 768), requires_grad=False) for _ in range(self.max_role_slots)]
@@ -89,6 +119,16 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         )
         self.active_role_count = nn.Parameter(torch.zeros(1), requires_grad=False)
         self.relation_routing_config = {
+            "use_spectral_image_routing": True,
+            "use_spectral_role_prototype": False,
+            "role_reset_on_strategy_change": False,
+            "use_text_anchor_routing": True,
+            "spectral_cutoff": 0.33,
+            "spectral_low_bins": 4,
+            "spectral_high_bins": 4,
+            "spectral_image_weight": 0.5,
+            "text_weight": 0.5,
+            "history_weight": 0.15,
             "routing_image_weight": 0.5,
             "routing_text_weight": 0.5,
             "routing_history_weight": 0.15,
@@ -96,19 +136,27 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             "routing_min_similarity": -1.0,
             "routing_prior_momentum": 0.8,
             "role_top_k": 2,
-            "role_birth_threshold": 0.70,
+            "role_birth_threshold": 0.55,
+            "role_assignment_strategy": "task_affinity_complete_link",
+            "role_assignment_score_mode": "member_max",
             "role_assignment_top_k": 1,
-            "role_assignment_min_similarity": 0.75,
+            "role_assignment_min_similarity": 0.68,
             "role_assignment_margin": 0.10,
+            "role_assignment_pair_weight": 0.25,
             "role_member_top_k": 2,
             "routing_role_prior_weight": 0.1,
-            "routing_role_member_weight": 0.5,
+            "routing_role_member_weight": 0.85,
             "routing_role_size_penalty": 0.20,
+            "routing_role_score_mode": "member_max",
+            "routing_role_prototype_weight": 0.15,
             "routing_early_layers": 16,
-            "routing_early_mode": "uniform",
+            "routing_early_mode": "task_softmax_within_role",
+            "routing_early_uniform_mix": 0.25,
             "routing_middle_layers": 13,
             "routing_middle_temperature": 0.5,
-            "routing_middle_role_gamma": 1.5,
+            "routing_middle_role_gamma": 1.15,
+            "routing_middle_role_uniform_mix": 0.10,
+            "routing_middle_task_uniform_mix": 0.10,
             "routing_middle_role_margin_low": 0.10,
             "routing_middle_role_margin_high": 0.30,
             "routing_middle_intra_margin_low": 0.05,
@@ -116,6 +164,9 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             "routing_late_layers": 3,
             "routing_late_top_k": 2,
         }
+        self.relation_routing_config.update(saved_relation_config)
+        self.config.mm_spectral_feature_dim = self.spectral_image_dim
+        self.config.relation_routing_config = dict(self.relation_routing_config)
 
     def set_cur_task(self, cur_task, expert_num):
         self.cur_task = cur_task
@@ -123,26 +174,23 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self.declared_expert_num = expert_num
         self.effective_expert_num = expert_num
 
-        for name, param in self.image_anchors.named_parameters():
-            param.requires_grad = True
-        
         for name, param in self.text_anchors.named_parameters():
+            param.requires_grad = True
+
+        for name, param in self.spectral_image_anchors.named_parameters():
             param.requires_grad = True
 
     def set_boundary_for_save(self):
-        for name, param in self.image_boundary.named_parameters():
-            param.requires_grad = True
-        
         for name, param in self.text_boundary.named_parameters():
             param.requires_grad = True
 
-        for name, param in self.image_anchors.named_parameters():
+        for name, param in self.spectral_image_boundary.named_parameters():
             param.requires_grad = True
-        
+
         for name, param in self.text_anchors.named_parameters():
             param.requires_grad = True
 
-        for name, param in self.role_image_prototypes.named_parameters():
+        for name, param in self.role_spectral_prototypes.named_parameters():
             param.requires_grad = True
 
         for name, param in self.role_text_prototypes.named_parameters():
@@ -162,6 +210,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             if value is None:
                 continue
             self.relation_routing_config[key] = value
+        self.config.relation_routing_config = dict(self.relation_routing_config)
 
     def set_eval(self, num_task, eval_task_id=None, effective_num_task=None):
         self.declared_expert_num = int(num_task)

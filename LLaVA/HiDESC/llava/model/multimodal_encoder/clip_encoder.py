@@ -40,17 +40,35 @@ class CLIPVisionTower(nn.Module):
     @torch.no_grad()
     def forward(self, images):
         if type(images) is list:
-            image_features = []
-            for image in images:
-                image_forward_out = self.vision_tower(image.to(device=self.device, dtype=self.dtype).unsqueeze(0), output_hidden_states=True)
-                image_feature = self.feature_select(image_forward_out).to(image.dtype)
-                image_features.append(image_feature)
-        else:
-            image_forward_outs = self.vision_tower(images.to(device=self.device, dtype=self.dtype), output_hidden_states=True)
-            image_features = self.feature_select(image_forward_outs).to(images.dtype)
-            clip_image_features = image_forward_outs.image_embeds.to(images.dtype)
+            images = torch.cat(
+                [
+                    image.unsqueeze(0) if image.ndim == 3 else image
+                    for image in images
+                ],
+                dim=0,
+            )
 
-        return clip_image_features, image_features
+        input_dtype = images.dtype
+        image_forward_outs = self.vision_tower(
+            images.to(device=self.device, dtype=self.dtype),
+            output_hidden_states=True,
+        )
+        selected_patch_features = self.feature_select(image_forward_outs).to(input_dtype)
+
+        # `last_hidden_state` is the final vision-layer output. The projection
+        # is the same CLIP projection used for the pooled image embedding.
+        final_patch_features = image_forward_outs.last_hidden_state[:, 1:].to(input_dtype)
+        projected_patch_features = self.vision_tower.visual_projection(
+            final_patch_features.to(self.vision_tower.visual_projection.weight.dtype)
+        ).to(input_dtype)
+        clip_image_features = image_forward_outs.image_embeds.to(input_dtype)
+
+        return (
+            clip_image_features,
+            selected_patch_features,
+            final_patch_features,
+            projected_patch_features,
+        )
 
     @property
     def dummy_feature(self):

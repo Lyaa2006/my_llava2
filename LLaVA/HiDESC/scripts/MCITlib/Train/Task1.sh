@@ -54,6 +54,15 @@ else:
 PY
 }
 
+append_optional_train_arg() {
+    local key="$1"
+    local value
+    value=$(read_optional_config "$TRAIN_CONFIG" "$key" "__MISSING__")
+    if [ "$value" != "__MISSING__" ]; then
+        EXTRA_ARGS="$EXTRA_ARGS --$key $value"
+    fi
+}
+
 count_expected_cache_entries() {
     python3 - "$1" <<'PY'
 import json
@@ -189,6 +198,43 @@ EXTRA_ARGS=""
 if [ "$MAX_STEPS" -gt 0 ]; then
     EXTRA_ARGS="$EXTRA_ARGS --max_steps $MAX_STEPS"
 fi
+for routing_key in \
+    use_spectral_image_routing \
+    use_text_anchor_routing \
+    spectral_cutoff \
+    spectral_low_bins \
+    spectral_high_bins \
+    spectral_image_weight \
+    text_weight \
+    history_weight \
+    routing_image_weight \
+    routing_text_weight \
+    routing_history_weight \
+    routing_temperature \
+    routing_min_similarity \
+    routing_prior_momentum \
+    role_top_k \
+    role_birth_threshold \
+    role_assignment_top_k \
+    role_assignment_min_similarity \
+    role_assignment_margin \
+    role_member_top_k \
+    routing_role_prior_weight \
+    routing_role_member_weight \
+    routing_role_size_penalty \
+    routing_early_layers \
+    routing_early_mode \
+    routing_middle_layers \
+    routing_middle_temperature \
+    routing_middle_role_gamma \
+    routing_middle_role_margin_low \
+    routing_middle_role_margin_high \
+    routing_middle_intra_margin_low \
+    routing_middle_intra_margin_high \
+    routing_late_layers \
+    routing_late_top_k; do
+    append_optional_train_arg "$routing_key"
+done
 
 if [ "$CACHE_READY" != "True" ]; then
     echo "Extracting description cache in $DESCRIPTION_CACHE_DIR"

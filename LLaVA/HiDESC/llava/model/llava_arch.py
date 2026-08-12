@@ -127,15 +127,35 @@ class LlavaMetaForCausalLM(ABC):
         return self.get_model().get_text_tower()
 
     def encode_images(self, images):
-        clip_image_features, image_features = self.get_model().get_vision_tower()(images)
-        image_features = self.get_model().mm_projector(image_features)
-        return clip_image_features.to(self.device), image_features.to(self.device)
+        (
+            clip_image_features,
+            selected_patch_features,
+            final_patch_features,
+            projected_patch_features,
+        ) = self.get_model().get_vision_tower()(images)
+        projected_llava_features = self.get_model().mm_projector(selected_patch_features)
+        return (
+            clip_image_features.to(self.device),
+            projected_llava_features.to(self.device),
+            final_patch_features.to(self.device),
+            projected_patch_features.to(self.device),
+        )
 
     def _get_relation_config(self):
         return getattr(
             self,
             "relation_routing_config",
             {
+                "use_spectral_image_routing": True,
+                "use_spectral_role_prototype": False,
+                "role_reset_on_strategy_change": False,
+                "use_text_anchor_routing": True,
+                "spectral_cutoff": 0.33,
+                "spectral_low_bins": 4,
+                "spectral_high_bins": 4,
+                "spectral_image_weight": 0.5,
+                "text_weight": 0.5,
+                "history_weight": 0.15,
                 "routing_image_weight": 0.5,
                 "routing_text_weight": 0.5,
                 "routing_history_weight": 0.15,
@@ -143,19 +163,27 @@ class LlavaMetaForCausalLM(ABC):
                 "routing_min_similarity": -1.0,
                 "routing_prior_momentum": 0.8,
                 "role_top_k": 2,
-                "role_birth_threshold": 0.70,
+                "role_birth_threshold": 0.55,
+                "role_assignment_strategy": "task_affinity_complete_link",
+                "role_assignment_score_mode": "member_max",
                 "role_assignment_top_k": 1,
-                "role_assignment_min_similarity": 0.75,
+                "role_assignment_min_similarity": 0.68,
                 "role_assignment_margin": 0.10,
+                "role_assignment_pair_weight": 0.25,
                 "role_member_top_k": 2,
                 "routing_role_prior_weight": 0.1,
-                "routing_role_member_weight": 0.5,
+                "routing_role_member_weight": 0.85,
                 "routing_role_size_penalty": 0.20,
+                "routing_role_score_mode": "member_max",
+                "routing_role_prototype_weight": 0.15,
                 "routing_early_layers": 16,
-                "routing_early_mode": "uniform",
+                "routing_early_mode": "task_softmax_within_role",
+                "routing_early_uniform_mix": 0.25,
                 "routing_middle_layers": 13,
                 "routing_middle_temperature": 0.5,
-                "routing_middle_role_gamma": 1.5,
+                "routing_middle_role_gamma": 1.15,
+                "routing_middle_role_uniform_mix": 0.10,
+                "routing_middle_task_uniform_mix": 0.10,
                 "routing_middle_role_margin_low": 0.10,
                 "routing_middle_role_margin_high": 0.30,
                 "routing_middle_intra_margin_low": 0.05,
@@ -164,6 +192,209 @@ class LlavaMetaForCausalLM(ABC):
                 "routing_late_top_k": 2,
             },
         )
+
+    def _build_radial_frequency_masks(self, height, width, device):
+        config = self._get_relation_config()
+        cutoff = float(config.get("spectral_cutoff", 0.33))
+        low_bins = int(config.get("spectral_low_bins", 4))
+        high_bins = int(config.get("spectral_high_bins", 4))
+        if not 0.0 < cutoff < 1.0:
+            raise ValueError(f"spectral_cutoff must be in (0, 1), got {cutoff}")
+        if low_bins <= 0 or high_bins <= 0:
+            raise ValueError(
+                "spectral_low_bins and spectral_high_bins must be positive"
+            )
+
+        y = torch.arange(height, device=device, dtype=torch.float32) - height // 2
+        x = torch.arange(width, device=device, dtype=torch.float32) - width // 2
+        y = y / max(height // 2, 1)
+        x = x / max(width // 2, 1)
+        radius = torch.sqrt(y[:, None].square() + x[None, :].square()) / 2.0**0.5
+        radius = radius.clamp(0.0, 1.0)
+
+        low_mask = radius <= cutoff
+        high_mask = ~low_mask
+        low_bin_ids = torch.clamp(
+            torch.floor(radius / cutoff * low_bins).long(),
+            min=0,
+            max=low_bins - 1,
+        )
+        high_bin_ids = torch.clamp(
+            torch.floor((radius - cutoff) / (1.0 - cutoff) * high_bins).long(),
+            min=0,
+            max=high_bins - 1,
+        )
+        low_masks = torch.stack(
+            [low_mask & (low_bin_ids == bin_id) for bin_id in range(low_bins)],
+            dim=0,
+        )
+        high_masks = torch.stack(
+            [
+                high_mask & (high_bin_ids == bin_id)
+                for bin_id in range(high_bins)
+            ],
+            dim=0,
+        )
+        return low_masks, high_masks, low_mask, high_mask
+
+    def _pool_spectral_bands(self, spectrum, band_masks):
+        pooled = []
+        for mask in band_masks:
+            count = mask.sum().clamp_min(1).to(dtype=spectrum.dtype)
+            pooled.append(
+                (spectrum * mask[None, :, :, None].to(spectrum.dtype)).sum(
+                    dim=(1, 2)
+                )
+                / count
+            )
+        return torch.stack(pooled, dim=-1)
+
+    def _extract_image_spectral_descriptor(self, projected_patch_features):
+        if projected_patch_features.ndim != 3:
+            raise ValueError(
+                "projected_patch_features must have shape [B, N, D], got "
+                f"{tuple(projected_patch_features.shape)}"
+            )
+        batch_size, num_patches, feature_dim = projected_patch_features.shape
+        vision_config = self.get_vision_tower().config
+        height = int(vision_config.image_size) // int(vision_config.patch_size)
+        width = height
+        if num_patches != height * width:
+            raise ValueError(
+                "Spectral routing requires a square CLIP patch grid: "
+                f"got N={num_patches}, expected {height}x{width}."
+            )
+
+        patch_grid = projected_patch_features.reshape(
+            batch_size, height, width, feature_dim
+        ).float()
+        frequency = torch.fft.fft2(patch_grid, dim=(1, 2))
+        frequency = torch.fft.fftshift(frequency, dim=(1, 2))
+        magnitude = torch.log1p(torch.abs(frequency))
+        real_part = frequency.real
+        imag_part = frequency.imag
+        low_masks, high_masks, low_mask, high_mask = (
+            self._build_radial_frequency_masks(
+                height,
+                width,
+                projected_patch_features.device,
+            )
+        )
+        if not torch.equal(low_mask | high_mask, torch.ones_like(low_mask)):
+            raise RuntimeError("Low/high spectral masks do not cover all frequencies.")
+        if torch.any(low_mask & high_mask):
+            raise RuntimeError("Low/high spectral masks overlap.")
+
+        low_magnitude = self._pool_spectral_bands(magnitude, low_masks)
+        high_magnitude = self._pool_spectral_bands(magnitude, high_masks)
+        low_real = self._pool_spectral_bands(real_part, low_masks)
+        high_real = self._pool_spectral_bands(real_part, high_masks)
+        low_imag = self._pool_spectral_bands(imag_part, low_masks)
+        high_imag = self._pool_spectral_bands(imag_part, high_masks)
+        magnitude_descriptor = torch.cat(
+            [
+                low_magnitude.flatten(1),
+                high_magnitude.flatten(1),
+            ],
+            dim=-1,
+        )
+        real_descriptor = torch.cat(
+            [
+                low_real.flatten(1),
+                high_real.flatten(1),
+            ],
+            dim=-1,
+        )
+        imag_descriptor = torch.cat(
+            [
+                low_imag.flatten(1),
+                high_imag.flatten(1),
+            ],
+            dim=-1,
+        )
+        descriptor = (
+            0.55 * F.normalize(magnitude_descriptor, dim=-1)
+            + 0.25 * F.normalize(real_descriptor, dim=-1)
+            + 0.20 * F.normalize(imag_descriptor, dim=-1)
+        )
+        descriptor = F.normalize(
+            torch.nan_to_num(descriptor.float(), nan=0.0, posinf=0.0, neginf=0.0),
+            dim=-1,
+        )
+        return descriptor
+
+    def _normalize_task_score_branch(self, scores):
+        scores = torch.nan_to_num(
+            scores.float(), nan=0.0, posinf=0.0, neginf=0.0
+        )
+        mean = scores.mean(dim=-1, keepdim=True)
+        std = scores.std(dim=-1, keepdim=True, unbiased=False)
+        return (scores - mean) / std.clamp_min(1e-6)
+
+    def _spectral_image_bank_available(self, active_experts):
+        if not getattr(self, "spectral_image_boundary", None):
+            return False
+        boundaries = torch.stack(
+            [
+                self.spectral_image_boundary[idx].detach().float().reshape(())
+                for idx in range(active_experts)
+            ]
+        )
+        return bool(torch.isfinite(boundaries).all() and torch.all(boundaries > 0))
+
+    def _anchor_is_trained(self, boundary_bank, task_id, min_count):
+        if boundary_bank is None or task_id >= len(boundary_bank):
+            return False
+        boundary = boundary_bank[task_id].detach().float().reshape(())
+        return bool(torch.isfinite(boundary) and float(boundary.item()) > float(min_count))
+
+    def _expert_has_eval_anchors(self, task_id):
+        config = self._get_relation_config()
+        if bool(config.get("use_text_anchor_routing", True)) and not self._anchor_is_trained(
+            getattr(self, "text_boundary", None),
+            task_id,
+            min_count=1.0,
+        ):
+            return False
+        if bool(config.get("use_spectral_image_routing", True)) and not self._anchor_is_trained(
+            getattr(self, "spectral_image_boundary", None),
+            task_id,
+            min_count=0.0,
+        ):
+            return False
+        return True
+
+    def _get_available_eval_expert_count(self, requested_experts=None):
+        if requested_experts is None:
+            requested_experts = int(getattr(self, "expert_num", 0))
+        requested_experts = min(
+            max(int(requested_experts), 0),
+            len(getattr(self, "image_anchors", [])),
+            int(getattr(self, "max_task_slots", 0)),
+        )
+        active_experts = 0
+        for task_id in range(requested_experts):
+            if not self._expert_has_eval_anchors(task_id):
+                break
+            active_experts += 1
+        return active_experts
+
+    def _get_spectral_image_anchor(self, task_id, device=None):
+        anchor = self._safe_normalize(
+            self.spectral_image_anchors[task_id].detach()
+        )
+        return anchor if device is None else anchor.to(device)
+
+    def _update_running_prototype(self, prototype, boundary, features):
+        features = torch.nan_to_num(
+            features.detach().float(), nan=0.0, posinf=0.0, neginf=0.0
+        )
+        old_count = boundary.detach().float().reshape(())
+        new_count = old_count + features.shape[0]
+        old_sum = prototype.detach().float().reshape(-1) * old_count
+        new_mean = (old_sum + features.sum(dim=0)) / new_count.clamp_min(1.0)
+        prototype.data.copy_(new_mean.reshape_as(prototype).to(prototype.dtype))
+        boundary.data.copy_(new_count.reshape_as(boundary).to(boundary.dtype))
 
     def _safe_normalize(self, tensor):
         if tensor.ndim > 1:
@@ -186,11 +417,23 @@ class LlavaMetaForCausalLM(ABC):
         self.task_role_membership.data.copy_(
             torch.nan_to_num(self.task_role_membership.detach(), nan=0.0, posinf=0.0, neginf=0.0)
         )
-        for prototype_bank in (self.role_image_prototypes, self.role_text_prototypes):
+        for prototype_bank in (
+            self.role_image_prototypes,
+            self.role_spectral_prototypes,
+            self.role_text_prototypes,
+        ):
             for prototype in prototype_bank:
                 prototype.data.copy_(
                     torch.nan_to_num(prototype.detach(), nan=0.0, posinf=0.0, neginf=0.0)
                 )
+        for prototype in self.spectral_image_anchors:
+            prototype.data.copy_(
+                torch.nan_to_num(prototype.detach(), nan=0.0, posinf=0.0, neginf=0.0)
+            )
+        for boundary in self.spectral_image_boundary:
+            boundary.data.copy_(
+                torch.nan_to_num(boundary.detach(), nan=0.0, posinf=0.0, neginf=0.0)
+            )
 
     def _get_active_role_count(self):
         self._sanitize_relation_memory()
@@ -201,10 +444,24 @@ class LlavaMetaForCausalLM(ABC):
         clamped = min(max(0, int(count)), self._max_supported_role_slots())
         self.active_role_count.data[0] = float(clamped)
 
+    def _reset_role_memory(self):
+        for prototype_bank in (
+            self.role_image_prototypes,
+            self.role_spectral_prototypes,
+            self.role_text_prototypes,
+        ):
+            for prototype in prototype_bank:
+                prototype.data.zero_()
+        self.role_task_count.data.zero_()
+        self.role_usage_prior.data.zero_()
+        self.task_role_membership.data.zero_()
+        self.active_role_count.data.zero_()
+
     def _max_supported_role_slots(self):
         return min(
             int(getattr(self, "max_role_slots", 0)),
             len(self.role_image_prototypes),
+            len(self.role_spectral_prototypes),
             len(self.role_text_prototypes),
             int(self.role_task_count.shape[0]),
             int(self.role_usage_prior.shape[0]),
@@ -227,17 +484,32 @@ class LlavaMetaForCausalLM(ABC):
         return min(max(membership_count, prototype_count), max_supported)
 
     def _get_task_anchor(self, task_id):
-        return (
-            self._safe_normalize(self.image_anchors[task_id].detach()),
-            self._safe_normalize(self.text_anchors[task_id].detach()),
+        return self._get_spectral_image_anchor(task_id), self._safe_normalize(
+            self.text_anchors[task_id].detach()
         )
+
+    def _get_task_role_anchors(self, task_id):
+        spectral_anchor = self._get_spectral_image_anchor(task_id)
+        text_anchor = self._safe_normalize(self.text_anchors[task_id].detach())
+        return spectral_anchor, text_anchor
 
     def _compose_relation_logits(self, image_scores, text_scores, history_scores):
         config = self._get_relation_config()
+        image_weight = float(
+            config.get("spectral_image_weight", config.get("routing_image_weight", 0.5))
+        )
+        text_weight = float(
+            config.get("text_weight", config.get("routing_text_weight", 0.5))
+        )
+        history_weight = float(
+            config.get("history_weight", config.get("routing_history_weight", 0.15))
+        )
+        if not bool(config.get("use_text_anchor_routing", True)):
+            text_weight = 0.0
         return (
-            float(config["routing_image_weight"]) * image_scores
-            + float(config["routing_text_weight"]) * text_scores
-            + float(config["routing_history_weight"]) * history_scores
+            image_weight * image_scores
+            + text_weight * text_scores
+            + history_weight * history_scores
         )
 
     def _mask_relation_logits(self, relation_logits):
@@ -271,6 +543,18 @@ class LlavaMetaForCausalLM(ABC):
         if float(weights.sum().item()) <= 0.0:
             weights = torch.ones_like(weights)
         return weights / weights.sum()
+
+    def _mix_with_uniform(self, weights, mix_ratio):
+        if weights.numel() == 0:
+            return weights
+        mix_ratio = float(max(0.0, min(1.0, mix_ratio)))
+        normalized = self._normalize_route_weights(weights)
+        if mix_ratio <= 0.0:
+            return normalized
+        uniform = torch.full_like(normalized, 1.0 / float(normalized.numel()))
+        return self._normalize_route_weights(
+            (1.0 - mix_ratio) * normalized + mix_ratio * uniform
+        )
 
     def _build_uniform_route_weights(self, active_experts, device):
         if active_experts <= 0:
@@ -326,30 +610,73 @@ class LlavaMetaForCausalLM(ABC):
         blend = (float(margin) - lower) / (upper - lower)
         return float(max(0.0, min(1.0, blend)))
 
-    def _compute_shared_task_scores(self, image_guide_features, text_guide_features, active_experts):
-        device = image_guide_features.device
+    def _compute_shared_task_scores(
+        self,
+        image_guide_features,
+        text_guide_features,
+        active_experts,
+    ):
+        device = text_guide_features.device
         if active_experts <= 0:
             return torch.empty(0, device=device, dtype=torch.float32)
 
-        image_bank = torch.stack(
-            [self._safe_normalize(self.image_anchors[idx].detach()).to(device) for idx in range(active_experts)],
-            dim=0,
-        )
         text_bank = torch.stack(
             [self._safe_normalize(self.text_anchors[idx].detach()).to(device) for idx in range(active_experts)],
             dim=0,
         )
 
-        normalized_image_features = F.normalize(image_guide_features.float(), dim=-1)
-        normalized_text_features = F.normalize(text_guide_features.float(), dim=-1)
+        config = self._get_relation_config()
+        text_features = F.normalize(text_guide_features.float(), dim=-1)
+        text_scores = torch.matmul(text_features, text_bank.T)
+        text_scores = self._normalize_task_score_branch(text_scores)
 
-        image_scores = torch.matmul(normalized_image_features, image_bank.T).max(dim=0).values
-        text_scores = torch.matmul(normalized_text_features, text_bank.T).max(dim=0).values
+        image_scores = torch.zeros_like(text_scores)
+        use_spectral = bool(config.get("use_spectral_image_routing", True))
+        if (
+            use_spectral
+            and image_guide_features is not None
+            and image_guide_features.shape[-1]
+            == self.spectral_image_anchors[0].shape[-1]
+            and self._spectral_image_bank_available(active_experts)
+        ):
+            spectral_bank = torch.stack(
+                [
+                    self._get_spectral_image_anchor(idx, device=device)
+                    for idx in range(active_experts)
+                ],
+                dim=0,
+            )
+            spectral_features = F.normalize(image_guide_features.float(), dim=-1)
+            image_scores = torch.matmul(spectral_features, spectral_bank.T)
+            image_scores = self._normalize_task_score_branch(image_scores)
 
-        return self._mask_relation_logits(
-            float(self._get_relation_config()["routing_image_weight"]) * image_scores
-            + float(self._get_relation_config()["routing_text_weight"]) * text_scores
+        history_scores = torch.nan_to_num(
+            self.expert_usage_prior[:active_experts].detach().float(),
+            nan=0.0,
+            posinf=0.0,
+            neginf=0.0,
+        ).to(device)
+        history_scores = self._normalize_task_score_branch(
+            history_scores.unsqueeze(0).expand(text_scores.shape[0], -1)
         )
+        image_weight = float(
+            config.get("spectral_image_weight", config.get("routing_image_weight", 0.5))
+        )
+        text_weight = float(
+            config.get("text_weight", config.get("routing_text_weight", 0.5))
+        )
+        history_weight = float(
+            config.get("history_weight", config.get("routing_history_weight", 0.15))
+        )
+        if not bool(config.get("use_text_anchor_routing", True)):
+            text_weight = 0.0
+        task_scores = (
+            image_weight * image_scores
+            + text_weight * text_scores
+            + history_weight * history_scores
+        )
+        task_scores = self._mask_relation_logits(task_scores)
+        return task_scores[0] if task_scores.shape[0] == 1 else task_scores
 
     def _role_member_tasks(self, role_id, active_experts):
         memberships = torch.nan_to_num(
@@ -360,19 +687,29 @@ class LlavaMetaForCausalLM(ABC):
         )
         return [idx for idx in range(active_experts) if float(memberships[idx].item()) > 0.0]
 
-    def _score_tasks(self, task_indices, image_anchor, text_anchor, device):
+    def _score_tasks(
+        self,
+        task_indices,
+        image_anchor,
+        text_anchor,
+        device,
+    ):
         if len(task_indices) == 0:
             return torch.empty(0, device=device, dtype=torch.float32)
-        image_bank = torch.stack(
-            [self._safe_normalize(self.image_anchors[idx].detach()).to(device) for idx in task_indices],
-            dim=0,
-        )
         text_bank = torch.stack(
             [self._safe_normalize(self.text_anchors[idx].detach()).to(device) for idx in task_indices],
             dim=0,
         )
-        image_scores = torch.matmul(image_bank, image_anchor.to(device))
         text_scores = torch.matmul(text_bank, text_anchor.to(device))
+        text_scores = self._normalize_task_score_branch(text_scores.unsqueeze(0)).squeeze(0)
+        spectral_bank = torch.stack(
+            [self._get_spectral_image_anchor(idx, device=device) for idx in task_indices],
+            dim=0,
+        )
+        image_scores = torch.matmul(spectral_bank, image_anchor.to(device))
+        image_scores = self._normalize_task_score_branch(
+            image_scores.unsqueeze(0)
+        ).squeeze(0)
         history_scores = torch.nan_to_num(
             self.expert_usage_prior[task_indices].detach().float(),
             nan=0.0,
@@ -382,7 +719,95 @@ class LlavaMetaForCausalLM(ABC):
         logits = self._compose_relation_logits(image_scores, text_scores, history_scores)
         return self._mask_relation_logits(logits)
 
-    def _score_roles(self, active_experts, expert_logits, image_anchor, text_anchor, device, return_details=False):
+    def _get_role_modal_weights(self):
+        config = self._get_relation_config()
+        image_weight = float(
+            config.get("spectral_image_weight", config.get("routing_image_weight", 0.5))
+        )
+        text_weight = float(
+            config.get("text_weight", config.get("routing_text_weight", 0.5))
+        )
+        if not bool(config.get("use_text_anchor_routing", True)):
+            text_weight = 0.0
+        total = max(image_weight + text_weight, 1e-6)
+        return image_weight / total, text_weight / total
+
+    def _aggregate_role_member_scores(self, scores, mode=None, top_k=None):
+        if scores.numel() == 0:
+            return torch.tensor(0.0, device=scores.device, dtype=torch.float32)
+        mode = str(
+            mode or self._get_relation_config().get("routing_role_score_mode", "member_max")
+        ).lower()
+        if top_k is None:
+            top_k = int(self._get_relation_config().get("role_member_top_k", 2))
+        top_k = min(max(int(top_k), 1), scores.numel())
+        if mode in {"mean", "member_mean"}:
+            return scores.float().mean()
+        if mode in {"topk_mean", "member_topk_mean"}:
+            return torch.topk(scores.float(), k=top_k).values.mean()
+        if mode in {"logsumexp", "member_logsumexp"}:
+            return torch.logsumexp(scores.float(), dim=0)
+        return scores.float().max()
+
+    def _compute_task_role_pair_score(
+        self,
+        task_id,
+        image_anchor,
+        text_anchor,
+        device,
+    ):
+        task_image_anchor = self._get_spectral_image_anchor(task_id, device=device)
+        task_text_anchor = self._safe_normalize(
+            self.text_anchors[task_id].detach()
+        ).to(device)
+        image_score = torch.dot(task_image_anchor, image_anchor.to(device))
+        text_score = torch.dot(task_text_anchor, text_anchor.to(device))
+        image_weight, text_weight = self._get_role_modal_weights()
+        return image_weight * image_score + text_weight * text_score
+
+    def _compute_role_pair_compatibility(
+        self,
+        role_id,
+        active_experts,
+        image_anchor,
+        text_anchor,
+        device,
+    ):
+        member_tasks = self._role_member_tasks(role_id, active_experts)
+        if len(member_tasks) == 0:
+            return torch.tensor(float("-inf"), device=device, dtype=torch.float32)
+        pair_scores = torch.stack(
+            [
+                self._compute_task_role_pair_score(
+                    task_id,
+                    image_anchor,
+                    text_anchor,
+                    device,
+                )
+                for task_id in member_tasks
+            ]
+        )
+        strategy = str(
+            self._get_relation_config().get(
+                "role_assignment_strategy",
+                "task_affinity_complete_link",
+            )
+        ).lower()
+        if strategy in {"average_link", "task_affinity_average_link"}:
+            return pair_scores.mean()
+        if strategy in {"single_link", "task_affinity_single_link"}:
+            return pair_scores.max()
+        return pair_scores.min()
+
+    def _score_roles(
+        self,
+        active_experts,
+        expert_logits,
+        image_anchor,
+        text_anchor,
+        device,
+        return_details=False,
+    ):
         self._sanitize_relation_memory()
         active_roles = min(self._get_active_role_count(), self._max_supported_role_slots())
         if active_roles == 0:
@@ -391,22 +816,48 @@ class LlavaMetaForCausalLM(ABC):
                 return empty, empty, empty
             return empty
 
-        role_image_bank = torch.stack(
-            [self._safe_normalize(self.role_image_prototypes[idx].detach()).to(device) for idx in range(active_roles)],
-            dim=0,
-        )
         role_text_bank = torch.stack(
             [self._safe_normalize(self.role_text_prototypes[idx].detach()).to(device) for idx in range(active_roles)],
             dim=0,
         )
-        prototype_scores = (
-            float(self._get_relation_config()["routing_image_weight"]) * torch.matmul(role_image_bank, image_anchor.to(device))
-            + float(self._get_relation_config()["routing_text_weight"]) * torch.matmul(role_text_bank, text_anchor.to(device))
-        )
+        config = self._get_relation_config()
+        prototype_scores = torch.zeros(active_roles, device=device, dtype=torch.float32)
+        if bool(config.get("use_text_anchor_routing", True)):
+            prototype_scores = prototype_scores + float(
+                config.get("text_weight", config.get("routing_text_weight", 0.5))
+            ) * torch.matmul(role_text_bank, text_anchor.to(device))
+        if bool(config.get("use_spectral_role_prototype", False)):
+            role_spectral_bank = torch.stack(
+                [
+                    self._safe_normalize(
+                        self.role_spectral_prototypes[idx].detach()
+                    ).to(device)
+                    for idx in range(active_roles)
+                ],
+                dim=0,
+            )
+            prototype_scores = prototype_scores + float(
+                config.get(
+                    "spectral_image_weight",
+                    config.get("routing_image_weight", 0.5),
+                )
+            ) * torch.matmul(role_spectral_bank, image_anchor.to(device))
 
         role_scores = []
         member_top_k = int(self._get_relation_config()["role_member_top_k"])
-        member_weight = float(self._get_relation_config()["routing_role_member_weight"])
+        member_weight = float(
+            self._get_relation_config().get("routing_role_member_weight", 0.85)
+        )
+        prototype_weight = float(
+            self._get_relation_config().get("routing_role_prototype_weight", 0.15)
+        )
+        weight_total = max(member_weight + prototype_weight, 1e-6)
+        member_weight /= weight_total
+        prototype_weight /= weight_total
+        member_score_mode = self._get_relation_config().get(
+            "routing_role_score_mode",
+            "member_max",
+        )
         prior_weight = float(self._get_relation_config()["routing_role_prior_weight"])
         size_penalty = float(self._get_relation_config().get("routing_role_size_penalty", 0.0))
         role_priors = self.role_usage_prior[:active_roles].detach().float().to(device)
@@ -417,12 +868,14 @@ class LlavaMetaForCausalLM(ABC):
             if len(member_tasks) == 0:
                 member_score = torch.tensor(0.0, device=device, dtype=torch.float32)
             else:
-                top_k = min(max(member_top_k, 1), len(member_tasks))
-                member_values = torch.topk(expert_logits[member_tasks], k=top_k).values
-                member_score = member_values.mean()
+                member_score = self._aggregate_role_member_scores(
+                    expert_logits[member_tasks],
+                    mode=member_score_mode,
+                    top_k=member_top_k,
+                )
             member_scores.append(member_score)
             role_scores.append(
-                prototype_scores[role_id]
+                prototype_weight * prototype_scores[role_id]
                 + member_weight * member_score
                 + prior_weight * role_priors[role_id]
                 - size_penalty * torch.log1p(role_sizes[role_id].clamp_min(0.0))
@@ -460,6 +913,10 @@ class LlavaMetaForCausalLM(ABC):
         device = task_scores.device
         weights = torch.zeros(active_experts, device=device, dtype=torch.float32)
         early_mode = str(self._get_relation_config().get("routing_early_mode", "uniform")).lower()
+        early_uniform_mix = float(
+            self._get_relation_config().get("routing_early_uniform_mix", 0.25)
+        )
+        role_weights = self._mix_with_uniform(role_weights, early_uniform_mix)
 
         for role_id, role_weight in enumerate(role_weights):
             role_weight = float(role_weight.detach().item())
@@ -494,11 +951,14 @@ class LlavaMetaForCausalLM(ABC):
         device = task_scores.device
         middle_temperature = float(config.get("routing_middle_temperature", 0.5))
         role_gamma = float(config.get("routing_middle_role_gamma", 1.35))
+        role_uniform_mix = float(config.get("routing_middle_role_uniform_mix", 0.10))
+        task_uniform_mix = float(config.get("routing_middle_task_uniform_mix", 0.10))
         role_margin_low = float(config.get("routing_middle_role_margin_low", 0.05))
         role_margin_high = float(config.get("routing_middle_role_margin_high", 0.25))
         intra_margin_low = float(config.get("routing_middle_intra_margin_low", 0.02))
         intra_margin_high = float(config.get("routing_middle_intra_margin_high", 0.12))
 
+        role_weights = self._mix_with_uniform(role_weights, role_uniform_mix)
         sorted_role_weights, _ = torch.sort(role_weights, descending=True)
         top1_role_weight = float(sorted_role_weights[0].item()) if sorted_role_weights.numel() > 0 else 1.0
         top2_role_weight = float(sorted_role_weights[1].item()) if sorted_role_weights.numel() > 1 else 0.0
@@ -541,7 +1001,10 @@ class LlavaMetaForCausalLM(ABC):
                     intra_margin_high,
                 )
                 local_weights = (1.0 - alpha) * local_uniform + alpha * local_prob
-                local_weights = self._normalize_route_weights(local_weights)
+                local_weights = self._mix_with_uniform(
+                    local_weights,
+                    task_uniform_mix,
+                )
 
             for local_idx, task_id in enumerate(member_tasks):
                 weights[task_id] += role_weight_value * local_weights[local_idx]
@@ -551,37 +1014,69 @@ class LlavaMetaForCausalLM(ABC):
         return self._normalize_route_weights(weights)
 
     def _assign_roles_from_sample(self, active_experts, expert_logits, image_anchor, text_anchor):
-        role_scores, prototype_scores, _ = self._score_roles(
-            active_experts,
-            expert_logits,
-            image_anchor,
-            text_anchor,
-            image_anchor.device,
-            return_details=True,
-        )
-        if role_scores.numel() == 0:
+        device = image_anchor.device
+        active_roles = min(self._get_active_role_count(), self._max_supported_role_slots())
+        if active_roles == 0:
             return torch.empty(0, device=image_anchor.device), [], True
-        top_value, top_index = torch.topk(role_scores, k=1)
-        best_score = float(top_value[0].item())
-        best_role_id = int(top_index[0].item())
-        best_prototype_score = float(prototype_scores[best_role_id].item())
-        birth_threshold = float(self._get_relation_config()["role_birth_threshold"])
-        prototype_threshold = float(self._get_relation_config().get("role_assignment_min_similarity", birth_threshold))
-        score_margin = float(self._get_relation_config().get("role_assignment_margin", 0.0))
 
-        if best_score < birth_threshold or best_prototype_score < prototype_threshold:
+        config = self._get_relation_config()
+        pair_threshold = float(
+            config.get("role_assignment_min_similarity", 0.68)
+        )
+        birth_threshold = float(config.get("role_birth_threshold", 0.55))
+        pair_weight = float(
+            max(0.0, min(1.0, config.get("role_assignment_pair_weight", 0.25)))
+        )
+        assignment_mode = config.get("role_assignment_score_mode", "member_max")
+        member_top_k = int(config.get("role_member_top_k", 2))
+
+        candidate_scores = []
+        candidate_roles = []
+        for role_id in range(active_roles):
+            member_tasks = self._role_member_tasks(role_id, active_experts)
+            if len(member_tasks) == 0:
+                continue
+            pair_score = self._compute_role_pair_compatibility(
+                role_id,
+                active_experts,
+                image_anchor,
+                text_anchor,
+                device,
+            )
+            if float(pair_score.item()) < pair_threshold:
+                continue
+            member_score = self._aggregate_role_member_scores(
+                expert_logits[member_tasks],
+                mode=assignment_mode,
+                top_k=member_top_k,
+            )
+            combined_score = (
+                (1.0 - pair_weight) * member_score
+                + pair_weight * pair_score
+            )
+            candidate_roles.append(role_id)
+            candidate_scores.append(combined_score)
+
+        if not candidate_scores:
+            return torch.empty(0, device=image_anchor.device), [], True
+
+        role_scores = torch.stack(candidate_scores, dim=0)
+        top_value, _ = torch.topk(role_scores, k=1)
+        best_score = float(top_value[0].item())
+        score_margin = float(config.get("role_assignment_margin", 0.10))
+        if best_score < birth_threshold:
             return torch.empty(0, device=image_anchor.device), [], True
 
         if role_scores.numel() > 1 and score_margin > 0.0:
             top2_values = torch.topk(role_scores, k=2).values
             if (
                 float((top2_values[0] - top2_values[1]).item()) < score_margin
-                and best_prototype_score < prototype_threshold + score_margin
+                and float(top2_values[0].item()) < birth_threshold + score_margin
             ):
                 return torch.empty(0, device=image_anchor.device), [], True
 
         top_m = min(
-            max(1, int(self._get_relation_config().get("role_assignment_top_k", 1))),
+            max(1, int(config.get("role_assignment_top_k", 1))),
             role_scores.numel(),
         )
         top_values, top_indices = torch.topk(role_scores, k=top_m)
@@ -592,7 +1087,8 @@ class LlavaMetaForCausalLM(ABC):
                 top_values / max(float(self._get_relation_config()["routing_temperature"]), 1e-6),
                 dim=0,
             )
-        return membership, top_indices.tolist(), False
+        selected_roles = [candidate_roles[index] for index in top_indices.tolist()]
+        return membership, selected_roles, False
 
     def _fallback_expert_weights(self, expert_logits, active_experts, sparse_top_k=None):
         if expert_logits.numel() == 0:
@@ -670,12 +1166,24 @@ class LlavaMetaForCausalLM(ABC):
                     proj_layer.expert_weight = active_weights
                     proj_layer.progressive_stage = stage
 
-    def _commit_task_to_roles(self, task_id, task_image_anchor, task_text_anchor, membership, candidate_roles, role_birth):
+    def _commit_task_to_roles(
+        self,
+        task_id,
+        task_image_anchor,
+        task_text_anchor,
+        membership,
+        candidate_roles,
+        role_birth,
+    ):
         if task_id < 0 or task_id >= self.max_task_slots:
             return
         if self._get_active_role_count() == 0 or role_birth or len(candidate_roles) == 0:
             role_id = min(self._get_active_role_count(), self.max_role_slots - 1)
-            self.role_image_prototypes[role_id].data.copy_(task_image_anchor.unsqueeze(0).to(self.role_image_prototypes[role_id].dtype))
+            self.role_spectral_prototypes[role_id].data.copy_(
+                task_image_anchor.unsqueeze(0).to(
+                    self.role_spectral_prototypes[role_id].dtype
+                )
+            )
             self.role_text_prototypes[role_id].data.copy_(task_text_anchor.unsqueeze(0).to(self.role_text_prototypes[role_id].dtype))
             self.role_task_count.data[role_id] = max(1.0, float(self.role_task_count[role_id].detach().item()))
             self.role_usage_prior.data[role_id] = max(1.0, float(self.role_usage_prior[role_id].detach().item()))
@@ -691,15 +1199,22 @@ class LlavaMetaForCausalLM(ABC):
                     continue
                 count = float(self.role_task_count[role_id].detach().item())
                 updated_count = count + weight
-                updated_image = (
-                    count * self._safe_normalize(self.role_image_prototypes[role_id].detach())
+                updated_spectral = (
+                    count
+                    * self._safe_normalize(
+                        self.role_spectral_prototypes[role_id].detach()
+                    )
                     + weight * task_image_anchor
                 ) / max(updated_count, 1e-6)
                 updated_text = (
                     count * self._safe_normalize(self.role_text_prototypes[role_id].detach())
                     + weight * task_text_anchor
                 ) / max(updated_count, 1e-6)
-                self.role_image_prototypes[role_id].data.copy_(updated_image.unsqueeze(0).to(self.role_image_prototypes[role_id].dtype))
+                self.role_spectral_prototypes[role_id].data.copy_(
+                    updated_spectral.unsqueeze(0).to(
+                        self.role_spectral_prototypes[role_id].dtype
+                    )
+                )
                 self.role_text_prototypes[role_id].data.copy_(updated_text.unsqueeze(0).to(self.role_text_prototypes[role_id].dtype))
                 self.role_task_count.data[role_id] = updated_count
                 self.role_usage_prior.data[role_id] = momentum * self.role_usage_prior[role_id].detach().float() + (1.0 - momentum) * weight
@@ -707,6 +1222,12 @@ class LlavaMetaForCausalLM(ABC):
         self.expert_usage_prior.data[task_id] = max(1.0, float(self.expert_usage_prior[task_id].detach().item()))
 
     def ensure_role_bank_initialized(self, completed_task_count):
+        if (
+            bool(self._get_relation_config().get("role_reset_on_strategy_change", False))
+            and not getattr(self, "_role_memory_reset_applied", False)
+        ):
+            self._reset_role_memory()
+            self._role_memory_reset_applied = True
         self._sanitize_relation_memory()
         completed_task_count = min(int(completed_task_count), self.max_task_slots)
         if completed_task_count <= 0:
@@ -725,9 +1246,19 @@ class LlavaMetaForCausalLM(ABC):
             return
 
         for task_id in range(completed_task_count):
-            task_image_anchor, task_text_anchor = self._get_task_anchor(task_id)
+            (
+                task_image_anchor,
+                task_text_anchor,
+            ) = self._get_task_role_anchors(task_id)
             if task_id == 0 and self._get_active_role_count() == 0:
-                self._commit_task_to_roles(task_id, task_image_anchor, task_text_anchor, None, [], True)
+                self._commit_task_to_roles(
+                    task_id,
+                    task_image_anchor,
+                    task_text_anchor,
+                    None,
+                    [],
+                    True,
+                )
                 continue
             expert_logits = self._score_tasks(
                 list(range(task_id)),
@@ -741,15 +1272,32 @@ class LlavaMetaForCausalLM(ABC):
                 task_image_anchor,
                 task_text_anchor,
             )
-            self._commit_task_to_roles(task_id, task_image_anchor, task_text_anchor, membership, candidate_roles, role_birth)
+            self._commit_task_to_roles(
+                task_id,
+                task_image_anchor,
+                task_text_anchor,
+                membership,
+                candidate_roles,
+                role_birth,
+            )
 
     def _finalize_current_task_role_memory_impl(self):
         task_id = min(max(int(self.cur_task), 0), self.max_task_slots - 1)
         if task_id > 0:
             self.ensure_role_bank_initialized(task_id)
-        task_image_anchor, task_text_anchor = self._get_task_anchor(task_id)
+        (
+            task_image_anchor,
+            task_text_anchor,
+        ) = self._get_task_role_anchors(task_id)
         if task_id == 0 and self._get_active_role_count() == 0:
-            self._commit_task_to_roles(task_id, task_image_anchor, task_text_anchor, None, [], True)
+            self._commit_task_to_roles(
+                task_id,
+                task_image_anchor,
+                task_text_anchor,
+                None,
+                [],
+                True,
+            )
             return
         expert_logits = self._score_tasks(
             list(range(task_id)),
@@ -763,7 +1311,14 @@ class LlavaMetaForCausalLM(ABC):
             task_image_anchor,
             task_text_anchor,
         )
-        self._commit_task_to_roles(task_id, task_image_anchor, task_text_anchor, membership, candidate_roles, role_birth)
+        self._commit_task_to_roles(
+            task_id,
+            task_image_anchor,
+            task_text_anchor,
+            membership,
+            candidate_roles,
+            role_birth,
+        )
 
     def prepare_inputs_labels_for_multimodal(
         self,
@@ -793,14 +1348,46 @@ class LlavaMetaForCausalLM(ABC):
 
         if type(images) is list or images.ndim == 5:
             concat_images = torch.cat([image for image in images], dim=0)
-            image_features = self.encode_images(concat_images)
+            (
+                clip_image_features,
+                image_features,
+                final_patch_features,
+                projected_patch_features,
+            ) = self.encode_images(concat_images)
             split_sizes = [image.shape[0] for image in images]
+            clip_image_features = torch.split(
+                clip_image_features, split_sizes, dim=0
+            )
             image_features = torch.split(image_features, split_sizes, dim=0)
             image_features = [x.flatten(0, 1).to(self.device) for x in image_features]
+            clip_image_features = torch.stack(
+                [x.float().mean(dim=0) for x in clip_image_features], dim=0
+            )
+            image_spectral_features = self._extract_image_spectral_descriptor(
+                projected_patch_features
+            )
+            image_spectral_features = torch.stack(
+                [
+                    x.float().mean(dim=0)
+                    for x in torch.split(image_spectral_features, split_sizes, dim=0)
+                ],
+                dim=0,
+            )
         else:
-            image_guide_features, image_features = self.encode_images(images)
+            (
+                clip_image_features,
+                image_features,
+                final_patch_features,
+                projected_patch_features,
+            ) = self.encode_images(images)
+            image_spectral_features = self._extract_image_spectral_descriptor(
+                projected_patch_features
+            )
 
-        assert image_features.shape[1] == 576, 'vision tower not a withprojection version.'
+        if isinstance(image_features, torch.Tensor):
+            assert image_features.shape[1] == 576, (
+                "vision tower not a withprojection version."
+            )
         text_tower = self.get_text_tower()
 
         # with torch.no_grad():
@@ -824,28 +1411,42 @@ class LlavaMetaForCausalLM(ABC):
         text_guide_features = text_tower(clip_text_inputs)
 
         if self.training and not getattr(self, "disable_anchor_update", False):
-            current_image_features = image_guide_features  # [batch_size, feature_dim]
             current_text_features = text_guide_features  # [batch_size, feature_dim]
             task_id = self.cur_task
 
-            image_sum = self.image_anchors[task_id] * self.image_boundary[task_id] + current_image_features.sum(dim=0)
-            text_sum = self.text_anchors[task_id] * self.text_boundary[task_id] + current_text_features.sum(dim=0)
-
-            self.image_boundary[task_id].data += current_image_features.shape[0]
-            self.text_boundary[task_id].data += current_text_features.shape[0]
-
-            self.image_anchors[task_id] = image_sum / self.image_boundary[task_id]
-            self.text_anchors[task_id] = text_sum / self.text_boundary[task_id]
+            self._update_running_prototype(
+                self.text_anchors[task_id],
+                self.text_boundary[task_id],
+                current_text_features,
+            )
+            self._update_running_prototype(
+                self.spectral_image_anchors[task_id],
+                self.spectral_image_boundary[task_id],
+                image_spectral_features,
+            )
         else:
-            active_experts = max(1, min(int(self.expert_num), len(self.image_anchors)))
+            active_experts = self._get_available_eval_expert_count(
+                requested_experts=int(self.expert_num)
+            )
+            if active_experts <= 0:
+                raise RuntimeError(
+                    "No trained experts with the required eval anchors are available. "
+                    "Check text/image/spectral anchor boundaries in the loaded checkpoint."
+                )
             self.ensure_role_bank_initialized(active_experts)
-            image_summary = self._summarize_guide_features(image_guide_features)
+            image_summary = self._summarize_guide_features(image_spectral_features)
             text_summary = self._summarize_guide_features(text_guide_features)
             task_scores = self._compute_shared_task_scores(
-                image_guide_features=image_guide_features,
-                text_guide_features=text_guide_features,
-                active_experts=active_experts,
-            )
+            image_guide_features=image_spectral_features,
+            text_guide_features=text_guide_features,
+            active_experts=active_experts,
+        )
+            if task_scores.ndim != 1:
+                raise RuntimeError(
+                    "HiDESC relation routing currently supports batch_size=1 "
+                    f"because expert weights are shared across the batch; got "
+                    f"task_scores shape {tuple(task_scores.shape)}."
+                )
             route_plan = self._build_progressive_route_plan(
                 active_experts,
                 task_scores,
