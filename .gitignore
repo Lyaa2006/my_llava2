@@ -70,6 +70,7 @@ public_models/
 **/triton_cache/
 
 # --- Evaluation exports / experiment reports ---
+/analysis_outputs/
 *_submission.tsv
 *MathVista*.xlsx
 docs/experiment*_description_drift/
