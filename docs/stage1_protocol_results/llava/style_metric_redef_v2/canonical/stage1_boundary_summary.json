@@ -1,0 +1,59 @@
+{
+  "num_reports": 3,
+  "reports": [
+    {
+      "model": "llava",
+      "dataset": "acl",
+      "split_name": "leave_one_dataset::acl",
+      "split_type": "leave_one_dataset_out",
+      "b1": 11,
+      "b2": 22,
+      "b1_ratio": 0.34375,
+      "b2_ratio": 0.6875,
+      "sample_count": 681,
+      "report_path": "docs/stage1_protocol_results/llava/style_metric_redef_v2/canonical/leave_one_dataset__acl/boundary_report.json"
+    },
+    {
+      "model": "llava",
+      "dataset": "dcl",
+      "split_name": "leave_one_dataset::dcl",
+      "split_type": "leave_one_dataset_out",
+      "b1": 8,
+      "b2": 12,
+      "b1_ratio": 0.25,
+      "b2_ratio": 0.375,
+      "sample_count": 601,
+      "report_path": "docs/stage1_protocol_results/llava/style_metric_redef_v2/canonical/leave_one_dataset__dcl/boundary_report.json"
+    },
+    {
+      "model": "llava",
+      "dataset": "ucit",
+      "split_name": "leave_one_dataset::ucit",
+      "split_type": "leave_one_dataset_out",
+      "b1": 7,
+      "b2": 28,
+      "b1_ratio": 0.21875,
+      "b2_ratio": 0.875,
+      "sample_count": 1234,
+      "report_path": "docs/stage1_protocol_results/llava/style_metric_redef_v2/canonical/leave_one_dataset__ucit/boundary_report.json"
+    }
+  ],
+  "aggregate": {
+    "b1_mean": 8.666666666666666,
+    "b1_std": 1.699673171197595,
+    "b2_mean": 20.666666666666668,
+    "b2_std": 6.599663291074443,
+    "b1_median": 8.0,
+    "b2_median": 22.0,
+    "boundary_windows": {
+      "b1": [
+        7,
+        9
+      ],
+      "b2": [
+        17,
+        25
+      ]
+    }
+  }
+}

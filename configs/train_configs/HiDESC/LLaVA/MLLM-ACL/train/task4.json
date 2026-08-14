@@ -7,6 +7,15 @@
   "epoch": 3,
   "batch_size": 4,
   "grad_acc": 2,
-  "lr": 2e-4,
-  "cur_task": 3
+  "lr": 0.0002,
+  "cur_task": 3,
+  "b1_low_layer": 15,
+  "b1_high_layer": 18,
+  "b2_low_layer": 29,
+  "b2_high_layer": 31,
+  "align_band_eta": 0.5,
+  "struct_band_eta": 0.35,
+  "struct_band_energy_rho": 1.0,
+  "loss_band_ema_gamma": 0.9,
+  "loss_band_position_eps": 0.05
 }

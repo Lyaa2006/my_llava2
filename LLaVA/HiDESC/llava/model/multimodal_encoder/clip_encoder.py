@@ -3,6 +3,13 @@ import torch.nn as nn
 
 from transformers import CLIPVisionModel, CLIPImageProcessor, CLIPVisionConfig, CLIPVisionModelWithProjection
 from transformers import CLIPTextModel, CLIPTextConfig
+from .intern_vit_6b.configuration_intern_vit import InternVisionConfig
+from .intern_vit_6b.modeling_intern_vit import InternVisionModel
+
+
+def is_intern_vit_6b_model(vision_tower_name):
+    model_names = ["intern_vit_6b", "internvit_6b", "InternViT-6B", "internvit6b"]
+    return any(name in vision_tower_name for name in model_names)
 
 
 class CLIPVisionTower(nn.Module):
@@ -18,11 +25,29 @@ class CLIPVisionTower(nn.Module):
         if not delay_load:
             self.load_model()
         else:
-            self.cfg_only = CLIPVisionConfig.from_pretrained(self.vision_tower_name)
+            if is_intern_vit_6b_model(self.vision_tower_name):
+                self.cfg_only = InternVisionConfig.from_pretrained(self.vision_tower_name)
+            else:
+                self.cfg_only = CLIPVisionConfig.from_pretrained(self.vision_tower_name)
 
     def load_model(self):
-        self.image_processor = CLIPImageProcessor.from_pretrained(self.vision_tower_name)
-        self.vision_tower = CLIPVisionModelWithProjection.from_pretrained(self.vision_tower_name)
+        if is_intern_vit_6b_model(self.vision_tower_name):
+            # InternViT-6B checkpoints use the same 336px preprocessing path
+            # as the original InternVL LLaVA integration.
+            crop_size = 448 if "448" in self.vision_tower_name else 336
+            self.image_processor = CLIPImageProcessor(
+                crop_size=crop_size,
+                do_center_crop=True,
+                do_normalize=True,
+                do_resize=True,
+                image_mean=[0.485, 0.456, 0.406],
+                image_std=[0.229, 0.224, 0.225],
+                size=crop_size,
+            )
+            self.vision_tower = InternVisionModel.from_pretrained(self.vision_tower_name)
+        else:
+            self.image_processor = CLIPImageProcessor.from_pretrained(self.vision_tower_name)
+            self.vision_tower = CLIPVisionModelWithProjection.from_pretrained(self.vision_tower_name)
         self.vision_tower.requires_grad_(False)
 
         self.is_loaded = True
@@ -55,13 +80,19 @@ class CLIPVisionTower(nn.Module):
         )
         selected_patch_features = self.feature_select(image_forward_outs).to(input_dtype)
 
-        # `last_hidden_state` is the final vision-layer output. The projection
-        # is the same CLIP projection used for the pooled image embedding.
         final_patch_features = image_forward_outs.last_hidden_state[:, 1:].to(input_dtype)
-        projected_patch_features = self.vision_tower.visual_projection(
-            final_patch_features.to(self.vision_tower.visual_projection.weight.dtype)
-        ).to(input_dtype)
-        clip_image_features = image_forward_outs.image_embeds.to(input_dtype)
+        if is_intern_vit_6b_model(self.vision_tower_name):
+            # InternViT has no CLIP visual projection. Keep the native patch
+            # representation for HiDESC's optional spectral descriptor.
+            projected_patch_features = final_patch_features
+            clip_image_features = image_forward_outs.pooler_output.to(input_dtype)
+        else:
+            # `last_hidden_state` is the final vision-layer output. The
+            # projection is the same CLIP projection used for image_embeds.
+            projected_patch_features = self.vision_tower.visual_projection(
+                final_patch_features.to(self.vision_tower.visual_projection.weight.dtype)
+            ).to(input_dtype)
+            clip_image_features = image_forward_outs.image_embeds.to(input_dtype)
 
         return (
             clip_image_features,

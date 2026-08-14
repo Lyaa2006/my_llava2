@@ -8,10 +8,10 @@ HARD_PATH="${HARD_PATH:-$MCITLIB_ROOT}"
 
 cd "$PROJECT_ROOT"
 
-export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1,2,3}"
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,1}"
 export NCCL_IB_DISABLE="${NCCL_IB_DISABLE:-1}"
 export NCCL_P2P_DISABLE="${NCCL_P2P_DISABLE:-1}"
-export DESCRIPTION_CACHE_MODEL_SOURCE="${DESCRIPTION_CACHE_MODEL_SOURCE:-base}"
+export DESCRIPTION_CACHE_MODEL_SOURCE="${DESCRIPTION_CACHE_MODEL_SOURCE:-previous}"
 
 RUN_ID="${RUN_ID:-HiDESC_full_$(date +%Y%m%d_%H%M%S)}"
 RUN_ROOT="${RUN_ROOT:-$MCITLIB_ROOT/checkpoints/UCIT/LLaVA/HiDESC/$RUN_ID}"
@@ -63,22 +63,32 @@ cfg_root = os.environ["CFG_ROOT"]
 cache_source = os.environ.get("DESCRIPTION_CACHE_MODEL_SOURCE", "base")
 
 common = {
-    "gpu_num": 4,
-    "rank": 96,
-    "expert_num": 6,
-    "epoch": 1,
-    "batch_size": 2,
-    "grad_acc": 8,
-    "lr": 2e-4,
-    "save_steps": 50000,
-    "model_max_length": 2048,
-    "dataloader_num_workers": 4,
-    "description_hidden_layer": -2,
-    "description_max_tokens": 32,
-    "description_focus_weight": 0.2,
-    "description_energy_weight": 1e-4,
-    "description_energy_margin": 30.0,
-    "standard_ce_weight": 3.0,
+    "gpu_num": int(os.environ.get("FULL_GPU_NUM", 2)),
+    "rank": int(os.environ.get("FULL_RANK", 96)),
+    "expert_num": int(os.environ.get("FULL_EXPERT_NUM", 6)),
+    "epoch": int(os.environ.get("FULL_EPOCH", 1)),
+    "batch_size": int(os.environ.get("FULL_BATCH_SIZE", 2)),
+    "grad_acc": int(os.environ.get("FULL_GRAD_ACC", 16)),
+    "lr": float(os.environ.get("FULL_LR", 2e-4)),
+    "save_steps": int(os.environ.get("FULL_SAVE_STEPS", 50000)),
+    "model_max_length": int(os.environ.get("FULL_MODEL_MAX_LENGTH", 2048)),
+    "dataloader_num_workers": int(os.environ.get("FULL_DATALOADER_NUM_WORKERS", 4)),
+    "description_max_tokens": int(os.environ.get("FULL_DESCRIPTION_MAX_TOKENS", 32)),
+    "description_focus_weight": float(os.environ.get("FULL_DESCRIPTION_FOCUS_WEIGHT", 0.05)),
+    "description_focus_alpha": float(os.environ.get("FULL_DESCRIPTION_FOCUS_ALPHA", 0.5)),
+    "description_energy_weight": float(os.environ.get("FULL_DESCRIPTION_ENERGY_WEIGHT", 5e-4)),
+    "description_energy_margin": float(os.environ.get("FULL_DESCRIPTION_ENERGY_MARGIN", 30.0)),
+    "b1_low_layer": int(os.environ.get("FULL_B1_LOW_LAYER", 15)),
+    "b1_high_layer": int(os.environ.get("FULL_B1_HIGH_LAYER", 18)),
+    "b2_low_layer": int(os.environ.get("FULL_B2_LOW_LAYER", 29)),
+    "b2_high_layer": int(os.environ.get("FULL_B2_HIGH_LAYER", 31)),
+    "align_band_eta": float(os.environ.get("FULL_ALIGN_BAND_ETA", 0.5)),
+    "struct_band_eta": float(os.environ.get("FULL_STRUCT_BAND_ETA", 0.08)),
+    "struct_band_energy_rho": float(os.environ.get("FULL_STRUCT_BAND_ENERGY_RHO", 1.0)),
+    "loss_band_ema_gamma": float(os.environ.get("FULL_LOSS_BAND_EMA_GAMMA", 0.9)),
+    "loss_band_position_eps": float(os.environ.get("FULL_LOSS_BAND_POSITION_EPS", 0.05)),
+    "align_loss_weight": float(os.environ.get("FULL_ALIGN_LOSS_WEIGHT", 0.005)),
+    "standard_ce_weight": float(os.environ.get("FULL_STANDARD_CE_WEIGHT", 3.0)),
 }
 
 task_meta = {
@@ -91,12 +101,14 @@ task_meta = {
 
 for tid in range(1, 7):
     eval_cfg = {
-        "gpu_num": 4,
+        "gpu_num": int(os.environ.get("FULL_GPU_NUM", 2)),
         "stage": f"HiDESC-task{tid}-full-{run_id}",
         "model_path": os.path.join(run_root, f"Task{tid}_llava_lora"),
         "result_path": result_root,
         "text_tower": "/mnt/lyaa/my_llava/clip-vit-large-patch14-336",
         "num_task": 6,
+        "routing_config_path": "configs/routing_configs/HiDESC/ucit_role_3way_fft_soft.json",
+        "stage1_band_schedule_path": "configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json",
     }
     with open(os.path.join(cfg_root, f"eval_task{tid}.json"), "w") as f:
         json.dump(eval_cfg, f, indent=2)
@@ -112,7 +124,7 @@ for tid, (cache_tag, cur_task) in task_meta.items():
         "description_cache_model_source": cache_source,
         "description_cache_dir": os.path.join(
             prev_dir,
-            f"reference_description_cache_{cache_source}_{cache_tag}",
+            f"reference_description_cache_{cache_source}_{cache_tag}_expanded_text_v1",
         ),
     })
     with open(os.path.join(cfg_root, f"train_task{tid}.json"), "w") as f:

@@ -1,45 +1,49 @@
 #!/bin/bash
 
-HARD_PATH=/your_path/MCITlib_v3
+set -euo pipefail
 
+HARD_PATH=${HARD_PATH:-/mnt/lyaa/MCITlib}
+DATA_CONFIG_DIR=${DATA_CONFIG_DIR:-$HARD_PATH/configs/data_configs/UCIT}
+TRAIN_CONFIG_ROOT=${TRAIN_CONFIG_ROOT:-$HARD_PATH/configs/train_configs/RegLoRA/InternVL/UCIT}
+DATA_SUFFIX=${DATA_SUFFIX:-}
+START_TASK=${START_TASK:-1}
+END_TASK=${END_TASK:-6}
+MODEL_CONFIG=$HARD_PATH/configs/model_configs/internvl.json
 
-bash scripts/MCITlib/Train/Task1.sh \
-    $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/UCIT/ImageNet-R.json \
-    $HARD_PATH/configs/train_configs/SEFE/InternVL/UCIT/train/task1.json
-bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 1
+run_task() {
+    local task_id=$1
+    local data_name=$2
+    local train_script=$3
+    local data_config=$DATA_CONFIG_DIR/${data_name}${DATA_SUFFIX}.json
+    local train_config=$TRAIN_CONFIG_ROOT/train/task${task_id}.json
 
+    bash "$train_script" "$MODEL_CONFIG" "$data_config" "$train_config"
+    bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh "$task_id"
+}
 
-bash scripts/MCITlib/Train/Taskn.sh \
-    $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/UCIT/ArxivQA.json \
-    $HARD_PATH/configs/train_configs/SEFE/InternVL/UCIT/train/task2.json
-bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 2
-
-
-bash scripts/MCITlib/Train/Taskn.sh \
-    $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/UCIT/VizWiz.json \
-    $HARD_PATH/configs/train_configs/SEFE/InternVL/UCIT/train/task3.json
-bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 3
-
-
-bash scripts/MCITlib/Train/Taskn.sh \
-    $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/UCIT/IconQA.json \
-    $HARD_PATH/configs/train_configs/SEFE/InternVL/UCIT/train/task4.json
-bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 4
-
-
-bash scripts/MCITlib/Train/Taskn.sh \
-    $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/UCIT/CLEVR-Math.json \
-    $HARD_PATH/configs/train_configs/SEFE/InternVL/UCIT/train/task5.json
-bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 5
-
-
-bash scripts/MCITlib/Train/Taskn.sh \
-    $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/UCIT/Flickr30k.json \
-    $HARD_PATH/configs/train_configs/SEFE/InternVL/UCIT/train/task6.json
-bash scripts/MCITlib/Eval_UCIT/Eval_finetune1.sh 6
+for task_id in $(seq "$START_TASK" "$END_TASK"); do
+    case "$task_id" in
+        1)
+            run_task 1 ImageNet-R scripts/MCITlib/Train/Task1.sh
+            ;;
+        2)
+            run_task 2 ArxivQA scripts/MCITlib/Train/Taskn.sh
+            ;;
+        3)
+            run_task 3 VizWiz scripts/MCITlib/Train/Taskn.sh
+            ;;
+        4)
+            run_task 4 IconQA scripts/MCITlib/Train/Taskn.sh
+            ;;
+        5)
+            run_task 5 CLEVR-Math scripts/MCITlib/Train/Taskn.sh
+            ;;
+        6)
+            run_task 6 Flickr30k scripts/MCITlib/Train/Taskn.sh
+            ;;
+        *)
+            echo "Unsupported task id: $task_id" >&2
+            exit 1
+            ;;
+    esac
+done

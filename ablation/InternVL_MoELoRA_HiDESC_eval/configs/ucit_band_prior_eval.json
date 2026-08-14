@@ -1,0 +1,7 @@
+{
+  "enable": true,
+  "global_lambda": 0.35,
+  "expert_prior_sigma": 0.75,
+  "active_expert_policy": "checkpoint_stage",
+  "stage1_band_schedule_path": "configs/internvl_stage1_band_eval_schedule.json"
+}

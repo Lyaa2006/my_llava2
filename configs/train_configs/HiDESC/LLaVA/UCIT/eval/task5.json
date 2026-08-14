@@ -1,8 +1,10 @@
 {
-  "gpu_num": 4,
+  "gpu_num": 2,
   "stage": "HiDESC-task5",
-  "model_path": "/mnt/lyaa/MCITlib/checkpoints/UCIT/LLaVA/HiDESC_from_HiDeTask1_g4b8ga2/Task5_llava_lora",
-  "result_path": "/mnt/lyaa/MCITlib/LLaVA/HiDESC/results/UCIT/full_each_dataset_hiddesc_from_hide_task1_g4b8ga2",
+  "model_path": "/home/lyaa/MCITlib_runs/checkpoints/UCIT/LLaVA/HiDESC_from_task1_ce_main_g4/Task5_llava_lora",
+  "result_path": "/home/lyaa/MCITlib_runs/results/UCIT/full_each_dataset_hiddesc_from_task1_ce_main_g4",
   "text_tower": "/mnt/lyaa/my_llava/clip-vit-large-patch14-336",
-  "num_task": 6
+  "num_task": 6,
+  "routing_config_path": "configs/routing_configs/HiDESC/ucit_role_3way_fft_soft.json",
+  "stage1_band_schedule_path": "configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json"
 }

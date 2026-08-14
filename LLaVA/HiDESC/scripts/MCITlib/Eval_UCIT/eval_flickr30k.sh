@@ -46,6 +46,8 @@ NUM_TASK=$(read_config "$TRAIN_CONFIG" num_task)
 DATA_PATH=$(read_config "$DATA_CONFIG" test_path)
 IMAGE=$(read_first_available "$DATA_CONFIG" test_folder image_folder)
 RESULT_PATH=$(read_config "$TRAIN_CONFIG" result_path)
+ROUTING_CONFIG_PATH=$(read_optional_json_field "$TRAIN_CONFIG" routing_config_path)
+STAGE1_BAND_SCHEDULE_PATH=$(read_optional_json_field "$TRAIN_CONFIG" stage1_band_schedule_path)
 ensure_existing_file "$DATA_PATH" "question file"
 ensure_existing_dir "$IMAGE" "image folder"
 MODELPATH_RESOLVED=$(resolve_run_scoped_path "$MODELPATH")
@@ -83,6 +85,8 @@ for IDX in $(seq 0 $((CHUNKS-1))); do
         --image-folder "$IMAGE" \
         --text-tower "$TEXT_TOWER" \
         --num-task "$NUM_TASK" \
+        ${ROUTING_CONFIG_PATH:+--routing-config-path "$ROUTING_CONFIG_PATH"} \
+        ${STAGE1_BAND_SCHEDULE_PATH:+--stage1-band-schedule-path "$STAGE1_BAND_SCHEDULE_PATH"} \
         --answers-file "$RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl" \
         --num-chunks "$CHUNKS" \
         --chunk-idx "$IDX" \

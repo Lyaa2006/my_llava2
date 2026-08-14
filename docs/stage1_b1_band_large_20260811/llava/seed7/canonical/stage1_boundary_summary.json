@@ -1,0 +1,113 @@
+{
+  "num_reports": 3,
+  "num_valid_b1_reports": 2,
+  "reports": [
+    {
+      "model": "llava",
+      "dataset": "acl",
+      "split_name": "leave_one_dataset::acl",
+      "split_type": "leave_one_dataset_out",
+      "status": "band_candidate",
+      "b1": 17,
+      "b2": 21,
+      "is_valid_b1": true,
+      "validity_reasons": [],
+      "b1_ratio": 0.53125,
+      "b2_ratio": 0.65625,
+      "boundary_windows": {
+        "b1": [
+          15,
+          19
+        ],
+        "b2": [
+          21,
+          21
+        ]
+      },
+      "sample_count": 773,
+      "report_path": "docs/stage1_b1_band_large_20260811/llava/seed7/canonical/leave_one_dataset__acl/boundary_report.json"
+    },
+    {
+      "model": "llava",
+      "dataset": "dcl",
+      "split_name": "leave_one_dataset::dcl",
+      "split_type": "leave_one_dataset_out",
+      "status": "band_candidate",
+      "b1": 19,
+      "b2": 23,
+      "is_valid_b1": true,
+      "validity_reasons": [],
+      "b1_ratio": 0.59375,
+      "b2_ratio": 0.71875,
+      "boundary_windows": {
+        "b1": [
+          15,
+          19
+        ],
+        "b2": [
+          23,
+          23
+        ]
+      },
+      "sample_count": 594,
+      "report_path": "docs/stage1_b1_band_large_20260811/llava/seed7/canonical/leave_one_dataset__dcl/boundary_report.json"
+    },
+    {
+      "model": "llava",
+      "dataset": "ucit",
+      "split_name": "leave_one_dataset::ucit",
+      "split_type": "leave_one_dataset_out",
+      "status": "candidate_without_band",
+      "b1": 14,
+      "b2": 28,
+      "is_valid_b1": false,
+      "validity_reasons": [
+        "no_viable_crossover_band_in_search_window"
+      ],
+      "b1_ratio": 0.4375,
+      "b2_ratio": 0.875,
+      "boundary_windows": {
+        "b1": [
+          10,
+          14
+        ],
+        "b2": [
+          28,
+          28
+        ]
+      },
+      "sample_count": 1201,
+      "report_path": "docs/stage1_b1_band_large_20260811/llava/seed7/canonical/leave_one_dataset__ucit/boundary_report.json"
+    }
+  ],
+  "aggregate": {
+    "b1_mean": 16.666666666666668,
+    "b1_std": 2.0548046676563256,
+    "b2_mean": 24.0,
+    "b2_std": 2.943920288775949,
+    "b1_median": 17.0,
+    "b2_median": 23.0,
+    "valid_b1_mean": 18.0,
+    "valid_b1_std": 1.0,
+    "boundary_windows": {
+      "b1": [
+        12,
+        19
+      ],
+      "b2": [
+        22,
+        25
+      ]
+    },
+    "valid_boundary_windows": {
+      "b1": [
+        15,
+        19
+      ],
+      "b2": [
+        21,
+        22
+      ]
+    }
+  }
+}

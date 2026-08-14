@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 
 MODEL_CONFIG=$1
 DATA_CONFIG=$2
@@ -30,6 +32,9 @@ IFS=',' read -ra GPULIST <<< "$CUDA_VISIBLE_DEVICES"
 CHUNKS=${#GPULIST[@]}
 
 RESULT_DIR="$RESULT_PATH/$TASK"
+STAGE_DIR="$RESULT_DIR/$STAGE"
+
+mkdir -p "$STAGE_DIR"
 
 for IDX in $(seq 0 $((CHUNKS-1))); do
     CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python -m llava.eval.CoIN.model_others \
@@ -37,7 +42,7 @@ for IDX in $(seq 0 $((CHUNKS-1))); do
         --model-base $MODELBASE \
         --question-file $DATA_PATH \
         --image-folder $IMAGE \
-        --answers-file $RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl \
+        --answers-file $STAGE_DIR/${CHUNKS}_${IDX}.jsonl \
         --num-chunks $CHUNKS \
         --chunk-idx $IDX \
         --temperature 0 \
@@ -46,20 +51,22 @@ done
 
 wait
 
-output_file=$RESULT_DIR/$STAGE/merge.jsonl
+output_file=$STAGE_DIR/merge.jsonl
 
 # Clear out the output file if it exists.
 > "$output_file"
 
 # Loop through the indices and concatenate each file.
 for IDX in $(seq 0 $((CHUNKS-1))); do
-    cat $RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl >> "$output_file"
+    chunk_file=$STAGE_DIR/${CHUNKS}_${IDX}.jsonl
+    test -f "$chunk_file"
+    cat "$chunk_file" >> "$output_file"
 done
 
 python -m llava.eval.CoIN.eval_deepseek_r1 \
     --annotation-file $DATA_PATH \
     --result-file $output_file \
-    --output-dir $RESULT_DIR/$STAGE \
+    --output-dir $STAGE_DIR \
 
 # /mnt/cache/guohaiyang/miniconda3/envs/coin/bin/python -m llava.eval.LLaVA.CoIN.create_prompt \
 #     --rule ./ETrain/Eval/LLaVA/CoIN/rule.json \

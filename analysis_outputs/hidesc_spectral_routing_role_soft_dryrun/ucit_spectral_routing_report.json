@@ -1,0 +1,657 @@
+{
+  "date": "2026-08-07",
+  "benchmark": "ucit",
+  "model_path": "/mnt/lyaa/MCITlib/checkpoints/UCIT/LLaVA/HiDESC_from_HiDeTask1_g4b8ga2/Task6_llava_lora_HiDESC_full_gpus0123_20260713_focus04_energy1e3",
+  "model_base": "/mnt/lyaa/my_llava/llava-v1.5-7b",
+  "text_tower": "/mnt/lyaa/my_llava/clip-vit-large-patch14-336",
+  "routing_config_json": "",
+  "prototype_cache": "analysis_outputs/hidesc_spectral_routing_run1/ucit_spectral_prototypes_task6.pt",
+  "prototype_limit": 8,
+  "eval_limit": 8,
+  "active_experts": 6,
+  "routing_config": {
+    "use_spectral_image_routing": true,
+    "use_legacy_global_image_routing": false,
+    "use_text_anchor_routing": true,
+    "use_spectral_role_prototype": true,
+    "spectral_cutoff": 0.33,
+    "spectral_low_bins": 4,
+    "spectral_high_bins": 4,
+    "spectral_low_scale": 0.7,
+    "spectral_high_scale": 0.3,
+    "spectral_image_weight": 0.5,
+    "text_weight": 0.5,
+    "history_weight": 0.15,
+    "routing_image_weight": 0.5,
+    "routing_text_weight": 0.5,
+    "routing_history_weight": 0.15,
+    "routing_temperature": 0.1,
+    "routing_min_similarity": -1.0,
+    "routing_prior_momentum": 0.8,
+    "role_top_k": 2,
+    "role_birth_threshold": 0.7,
+    "role_assignment_top_k": 1,
+    "role_assignment_min_similarity": 0.75,
+    "role_assignment_margin": 0.1,
+    "role_member_top_k": 2,
+    "routing_role_prior_weight": 0.1,
+    "routing_role_member_weight": 0.5,
+    "routing_role_size_penalty": 0.2,
+    "routing_early_layers": 16,
+    "routing_early_mode": "uniform",
+    "routing_early_uniform_mix": 0.25,
+    "routing_middle_layers": 13,
+    "routing_middle_temperature": 0.5,
+    "routing_middle_role_gamma": 1.15,
+    "routing_middle_role_uniform_mix": 0.1,
+    "routing_middle_task_uniform_mix": 0.1,
+    "routing_middle_role_margin_low": 0.1,
+    "routing_middle_role_margin_high": 0.3,
+    "routing_middle_intra_margin_low": 0.05,
+    "routing_middle_intra_margin_high": 0.2,
+    "routing_late_layers": 3,
+    "routing_late_top_k": 2
+  },
+  "prototype_counts": [
+    4096,
+    4096,
+    4096,
+    4096,
+    4096,
+    4096
+  ],
+  "tasks": [
+    {
+      "task_id": 0,
+      "task_name": "ImageNet-R",
+      "sample_count": 8,
+      "task_score": {
+        "avg_score": [
+          1.287442,
+          -0.825737,
+          0.286661,
+          -0.219311,
+          -0.929355,
+          0.400239
+        ],
+        "top1_rate": [
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "expected_expert_top1_rate": 1.0,
+        "margin_mean": 0.8857966996729374,
+        "softmax_entropy_mean": 1.5011049062013626
+      },
+      "stages": {
+        "early": {
+          "avg_weight": [
+            0.782039,
+            0.041671,
+            0.045189,
+            0.041913,
+            0.041672,
+            0.047516
+          ],
+          "top1_rate": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 0.8746039420366287,
+          "margin_mean": 0.7344911252148449,
+          "expected_expert_top1_rate": 1.0
+        },
+        "middle": {
+          "avg_weight": [
+            0.944381,
+            0.009555,
+            0.012403,
+            0.009747,
+            0.009556,
+            0.014359
+          ],
+          "top1_rate": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 0.3030080199241638,
+          "margin_mean": 0.9299973042216152,
+          "expected_expert_top1_rate": 1.0
+        },
+        "late": {
+          "avg_weight": [
+            0.999679,
+            0.0,
+            1e-06,
+            0.0,
+            0.0,
+            0.00032
+          ],
+          "top1_rate": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 0.002746025347732939,
+          "margin_mean": 0.9993579364577272,
+          "expected_expert_top1_rate": 1.0
+        }
+      }
+    },
+    {
+      "task_id": 1,
+      "task_name": "ArxivQA",
+      "sample_count": 8,
+      "task_score": {
+        "avg_score": [
+          -0.189052,
+          1.66079,
+          -0.059922,
+          0.042517,
+          -1.405845,
+          -0.048577
+        ],
+        "top1_rate": [
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "expected_expert_top1_rate": 1.0,
+        "margin_mean": 1.4651672840118408,
+        "softmax_entropy_mean": 1.3286053091287613
+      },
+      "stages": {
+        "early": {
+          "avg_weight": [
+            0.041765,
+            0.787651,
+            0.042861,
+            0.042821,
+            0.041667,
+            0.043235
+          ],
+          "top1_rate": [
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 0.8584943562746048,
+          "margin_mean": 0.7433931846171618,
+          "expected_expert_top1_rate": 1.0
+        },
+        "middle": {
+          "avg_weight": [
+            0.009596,
+            0.949116,
+            0.010494,
+            0.010464,
+            0.009518,
+            0.010811
+          ],
+          "top1_rate": [
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 0.2822163552045822,
+          "margin_mean": 0.9374635124113411,
+          "expected_expert_top1_rate": 1.0
+        },
+        "late": {
+          "avg_weight": [
+            0.0,
+            0.999926,
+            0.0,
+            2.7e-05,
+            0.0,
+            4.7e-05
+          ],
+          "top1_rate": [
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 0.000682531362227845,
+          "margin_mean": 0.9998518146987252,
+          "expected_expert_top1_rate": 1.0
+        }
+      }
+    },
+    {
+      "task_id": 2,
+      "task_name": "VizWiz",
+      "sample_count": 8,
+      "task_score": {
+        "avg_score": [
+          0.188431,
+          -0.464759,
+          1.249127,
+          -0.491895,
+          -1.417238,
+          0.936242
+        ],
+        "top1_rate": [
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "expected_expert_top1_rate": 1.0,
+        "margin_mean": 0.3128846138715744,
+        "softmax_entropy_mean": 1.4689341634511948
+      },
+      "stages": {
+        "early": {
+          "avg_weight": [
+            0.042443,
+            0.041702,
+            0.639144,
+            0.041694,
+            0.041667,
+            0.19335
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 1.1028638556599617,
+          "margin_mean": 0.44579349737614393,
+          "expected_expert_top1_rate": 1.0
+        },
+        "middle": {
+          "avg_weight": [
+            0.011377,
+            0.010723,
+            0.774845,
+            0.010715,
+            0.010692,
+            0.181647
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 0.6506015136837959,
+          "margin_mean": 0.5931984977796674,
+          "expected_expert_top1_rate": 1.0
+        },
+        "late": {
+          "avg_weight": [
+            0.0,
+            0.0,
+            0.878024,
+            0.0,
+            0.0,
+            0.121976
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 0.2899258953984827,
+          "margin_mean": 0.7560483307825052,
+          "expected_expert_top1_rate": 1.0
+        }
+      }
+    },
+    {
+      "task_id": 3,
+      "task_name": "IconQA",
+      "sample_count": 8,
+      "task_score": {
+        "avg_score": [
+          0.284355,
+          -0.296204,
+          -0.466961,
+          1.466153,
+          -0.31492,
+          -0.672579
+        ],
+        "top1_rate": [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        "expected_expert_top1_rate": 1.0,
+        "margin_mean": 1.1204079110175371,
+        "softmax_entropy_mean": 1.4160485863685608
+      },
+      "stages": {
+        "early": {
+          "avg_weight": [
+            0.056324,
+            0.04183,
+            0.041776,
+            0.776496,
+            0.041852,
+            0.041723
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 0.8817759081721306,
+          "margin_mean": 0.7201271713711321,
+          "expected_expert_top1_rate": 1.0
+        },
+        "middle": {
+          "avg_weight": [
+            0.023988,
+            0.009696,
+            0.009653,
+            0.93734,
+            0.009713,
+            0.009611
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 0.3150686174631119,
+          "margin_mean": 0.913316756603308,
+          "expected_expert_top1_rate": 1.0
+        },
+        "late": {
+          "avg_weight": [
+            0.007072,
+            0.0,
+            0.0,
+            0.992928,
+            0.0,
+            0.0
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 0.028031807627115768,
+          "margin_mean": 0.9858560090325348,
+          "expected_expert_top1_rate": 1.0
+        }
+      }
+    },
+    {
+      "task_id": 4,
+      "task_name": "CLEVR-Math",
+      "sample_count": 8,
+      "task_score": {
+        "avg_score": [
+          -0.052526,
+          -0.650528,
+          -0.724765,
+          0.357536,
+          1.940806,
+          -0.870574
+        ],
+        "top1_rate": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          0.0
+        ],
+        "expected_expert_top1_rate": 1.0,
+        "margin_mean": 1.5832698568701744,
+        "softmax_entropy_mean": 1.1764136254787445
+      },
+      "stages": {
+        "early": {
+          "avg_weight": [
+            0.041715,
+            0.041667,
+            0.041667,
+            0.04191,
+            0.791374,
+            0.041667
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "entropy_mean": 0.8479010909795761,
+          "margin_mean": 0.7494639218784869,
+          "expected_expert_top1_rate": 1.0
+        },
+        "middle": {
+          "avg_weight": [
+            0.009534,
+            0.009496,
+            0.009497,
+            0.009688,
+            0.952289,
+            0.009496
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "entropy_mean": 0.2685050815343857,
+          "margin_mean": 0.942601446644403,
+          "expected_expert_top1_rate": 1.0
+        },
+        "late": {
+          "avg_weight": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "entropy_mean": 3.21237745737335e-06,
+          "margin_mean": 0.9999995933239993,
+          "expected_expert_top1_rate": 1.0
+        }
+      }
+    },
+    {
+      "task_id": 5,
+      "task_name": "Flickr30k",
+      "sample_count": 8,
+      "task_score": {
+        "avg_score": [
+          0.230557,
+          -0.480675,
+          1.063137,
+          -0.58473,
+          -1.437889,
+          1.209578
+        ],
+        "top1_rate": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "expected_expert_top1_rate": 1.0,
+        "margin_mean": 0.146440327167511,
+        "softmax_entropy_mean": 1.462659314274788
+      },
+      "stages": {
+        "early": {
+          "avg_weight": [
+            0.042857,
+            0.041677,
+            0.309561,
+            0.041681,
+            0.041667,
+            0.522557
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "entropy_mean": 1.227107048034668,
+          "margin_mean": 0.212995994836092,
+          "expected_expert_top1_rate": 1.0
+        },
+        "middle": {
+          "avg_weight": [
+            0.014318,
+            0.013026,
+            0.330085,
+            0.013031,
+            0.013016,
+            0.616525
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "entropy_mean": 0.8796506449580193,
+          "margin_mean": 0.28644007816910744,
+          "expected_expert_top1_rate": 1.0
+        },
+        "late": {
+          "avg_weight": [
+            0.0,
+            0.0,
+            0.205083,
+            0.0,
+            0.0,
+            0.794917
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "entropy_mean": 0.4818358048796654,
+          "margin_mean": 0.5898331459611654,
+          "expected_expert_top1_rate": 1.0
+        }
+      }
+    }
+  ],
+  "summary": {
+    "expected_expert_top1_rate": {
+      "task_score": 1.0,
+      "early": 1.0,
+      "middle": 1.0,
+      "late": 1.0
+    },
+    "mean_entropy": {
+      "task_score": 1.392294317483902,
+      "early": 0.9654577001929283,
+      "middle": 0.4498417054613431,
+      "late": 0.13387087949878032
+    },
+    "mean_margin": {
+      "task_score": 0.9189944487685958,
+      "early": 0.6010441492156436,
+      "middle": 0.767169599304907,
+      "late": 0.8884911383761095
+    },
+    "avg_weight_by_stage": {
+      "early": [
+        0.167857,
+        0.166033,
+        0.1867,
+        0.164419,
+        0.16665,
+        0.148341
+      ],
+      "middle": [
+        0.168866,
+        0.166935,
+        0.191163,
+        0.165164,
+        0.167464,
+        0.140408
+      ],
+      "late": [
+        0.167792,
+        0.166654,
+        0.180518,
+        0.165493,
+        0.166667,
+        0.152877
+      ]
+    }
+  }
+}

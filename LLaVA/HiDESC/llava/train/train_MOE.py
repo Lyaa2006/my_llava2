@@ -29,17 +29,18 @@ import sys
 import transformers
 import subprocess
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from llava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 from torch.utils.data import Dataset
+from llava.train.description_utils import select_expanded_description_tokens
 from llava.train.llava_trainer import LLaVATrainer
 
 from llava import conversation as conversation_lib
 from llava.model import *
 from llava.mm_utils import tokenizer_image_token
-
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
 
 from HiDESC.peft import PeftModel, TaskType, get_peft_model, HiDeMOELoraConfig, WEIGHTS_NAME, set_peft_model_state_dict
 
@@ -65,6 +66,7 @@ DESCRIPTION_KEY_TERMS = (
     "relation",
     "relations",
 )
+DESCRIPTION_CACHE_FORMAT = "expanded_text_v1"
 
 
 def rank0_print(*args):
@@ -122,6 +124,10 @@ class ModelArguments:
     use_spectral_role_prototype: Optional[bool] = field(default=None)
     role_reset_on_strategy_change: Optional[bool] = field(default=None)
     use_text_anchor_routing: Optional[bool] = field(default=None)
+    use_stage1_band_schedule_eval: Optional[bool] = field(default=None)
+    stage1_band_schedule_path: Optional[str] = field(default=None)
+    eval_use_role_spectral_prototype: Optional[bool] = field(default=None)
+    eval_disable_role_image_prototype: Optional[bool] = field(default=None)
     spectral_cutoff: Optional[float] = field(default=None)
     spectral_low_bins: Optional[int] = field(default=None)
     spectral_high_bins: Optional[int] = field(default=None)
@@ -221,13 +227,20 @@ class TrainingArguments(transformers.TrainingArguments):
     extract_description_cache_only: bool = field(default=False)
     description_cache_model_source: str = field(default="base")
     description_cache_max_new_entries: int = field(default=-1)
-    description_hidden_layer: int = field(default=-2)
     description_max_tokens: int = field(default=32)
     description_focus_weight: float = field(default=0.2)
+    description_focus_alpha: float = field(default=0.5)
     description_energy_weight: float = field(default=1e-4)
     description_energy_margin: float = field(default=30.0)
-    enable_boundary_align: bool = field(default=False)
-    align_boundary_layer: int = field(default=15)
+    b1_low_layer: int = field(default=15)
+    b1_high_layer: int = field(default=18)
+    b2_low_layer: int = field(default=29)
+    b2_high_layer: int = field(default=31)
+    align_band_eta: float = field(default=0.5)
+    struct_band_eta: float = field(default=0.35)
+    struct_band_energy_rho: float = field(default=1.0)
+    loss_band_ema_gamma: float = field(default=0.9)
+    loss_band_position_eps: float = field(default=0.05)
     align_loss_weight: float = field(default=0.01)
     standard_ce_weight: float = field(default=1.0)
 
@@ -276,14 +289,11 @@ def get_peft_state_non_lora_maybe_zero_3(named_params, require_grad_only=True):
     to_return = {k: t for k, t in named_params if "lora_" not in k}
     if require_grad_only:
         persistent_state_keys = (
-            "image_anchors",
             "text_anchors",
-            "image_boundary",
             "text_boundary",
             "spectral_image_anchors",
             "spectral_image_boundary",
             "expert_usage_prior",
-            "role_image_prototypes",
             "role_spectral_prototypes",
             "role_text_prototypes",
             "role_task_count",
@@ -796,19 +806,6 @@ def get_description_cache_path(cache_dir: str, cache_key: str) -> str:
     return os.path.join(cache_dir, f"{cache_key}.pt")
 
 
-def select_description_tokens(
-    hidden_states: torch.Tensor,
-    attention_mask: torch.Tensor,
-    max_tokens: int,
-) -> List[torch.Tensor]:
-    lengths = attention_mask.long().sum(dim=1).tolist()
-    sequences = []
-    for batch_idx, cur_len in enumerate(lengths):
-        start_idx = max(0, cur_len - max_tokens)
-        sequences.append(hidden_states[batch_idx, start_idx:cur_len].detach())
-    return sequences
-
-
 def pad_description_sequences(
     sequences: Sequence[torch.Tensor],
     padding_value: float = 0.0,
@@ -1212,6 +1209,36 @@ def extract_description_cache(model, tokenizer, data_args, training_args):
         raise ValueError("`description_cache_dir` is required when extracting description cache.")
 
     os.makedirs(data_args.description_cache_dir, exist_ok=True)
+    meta_path = os.path.join(data_args.description_cache_dir, "meta.json")
+    existing_total_before = count_cached_description_entries(data_args.description_cache_dir)
+    if existing_total_before > 0 and not os.path.exists(meta_path):
+        raise ValueError(
+            f"Description cache at {data_args.description_cache_dir} has entries but "
+            "no metadata. Please use a new cache directory."
+        )
+    if os.path.exists(meta_path):
+        with open(meta_path, "r") as f:
+            existing_meta = json.load(f)
+        expected_identity = {
+            "data_path": data_args.data_path,
+            "memory_data_path": data_args.memory_data_path,
+            "description_prompt": data_args.description_prompt,
+            "description_cache_model_source": training_args.description_cache_model_source,
+            "description_cache_format": DESCRIPTION_CACHE_FORMAT,
+            "b2_high_layer": training_args.b2_high_layer,
+            "description_max_tokens": training_args.description_max_tokens,
+        }
+        mismatches = [
+            key
+            for key, value in expected_identity.items()
+            if existing_meta.get(key) != value
+        ]
+        if mismatches:
+            raise ValueError(
+                f"Description cache at {data_args.description_cache_dir} does not "
+                f"match the requested settings ({', '.join(mismatches)}). "
+                "Please use a new cache directory."
+            )
     rank, world_size = get_dist_rank_and_world_size()
     move_model_to_training_device(model, training_args)
     data_module = make_supervised_data_module(tokenizer=tokenizer, data_args=data_args)
@@ -1219,20 +1246,46 @@ def extract_description_cache(model, tokenizer, data_args, training_args):
     data_collator = data_module["data_collator"]
 
     model.eval()
+    wrapped_model = getattr(model, "module", model)
+    cache_mode_targets = []
+    seen_target_ids = set()
+    pending_targets = [wrapped_model]
+    while pending_targets:
+        target = pending_targets.pop(0)
+        if target is None or id(target) in seen_target_ids:
+            continue
+        seen_target_ids.add(id(target))
+        cache_mode_targets.append(target)
+        for attr_name in ("get_base_model", "base_model", "model"):
+            if attr_name == "get_base_model":
+                getter = getattr(target, attr_name, None)
+                if callable(getter):
+                    try:
+                        pending_targets.append(getter())
+                    except (AttributeError, TypeError):
+                        pass
+            else:
+                pending_targets.append(getattr(target, attr_name, None))
+    previous_cache_modes = [
+        (target, hasattr(target, "cache_extraction_mode"), getattr(target, "cache_extraction_mode", None))
+        for target in cache_mode_targets
+    ]
+    for target in cache_mode_targets:
+        target.cache_extraction_mode = True
     start_time = time.time()
     cache_manifest = {
         "data_path": data_args.data_path,
         "memory_data_path": data_args.memory_data_path,
         "description_prompt": data_args.description_prompt,
         "description_cache_model_source": training_args.description_cache_model_source,
-        "description_hidden_layer": training_args.description_hidden_layer,
+        "description_cache_format": DESCRIPTION_CACHE_FORMAT,
+        "b2_high_layer": training_args.b2_high_layer,
         "description_max_tokens": training_args.description_max_tokens,
         "num_samples": len(train_dataset),
     }
     cached_count = 0
     newly_cached_count = 0
     max_new_entries = int(getattr(training_args, "description_cache_max_new_entries", -1))
-    existing_total_before = count_cached_description_entries(data_args.description_cache_dir)
     progress_interval = max(250, min(1000, max(1, len(train_dataset) // 20)))
     assigned_indices = range(rank, len(train_dataset), world_size)
     assigned_total = len(assigned_indices)
@@ -1249,41 +1302,71 @@ def extract_description_cache(model, tokenizer, data_args, training_args):
             return torch.autocast(device_type="cuda", dtype=torch.bfloat16)
         return nullcontext()
 
-    for local_step, idx in enumerate(assigned_indices, start=1):
-        if max_new_entries > 0:
-            current_total = count_cached_description_entries(data_args.description_cache_dir)
-            if current_total - existing_total_before >= max_new_entries:
-                break
-        sample = train_dataset[idx]
-        if "description_input_ids" not in sample:
-            continue
-        cache_path = get_description_cache_path(
-            data_args.description_cache_dir,
-            sample["description_cache_key"],
-        )
-        if os.path.exists(cache_path):
-            continue
-        batch = data_collator([sample])
-        batch = move_batch_to_device(batch, training_args.device)
-        batch = move_images_to_vision_tower(batch, model)
-        with torch.no_grad(), build_autocast_context():
-            outputs = model(
-                input_ids=batch["description_input_ids"],
-                attention_mask=batch["description_attention_mask"],
-                images=batch.get("images"),
-                output_hidden_states=True,
-                return_dict=True,
-                use_cache=False,
+    try:
+        for local_step, idx in enumerate(assigned_indices, start=1):
+            if max_new_entries > 0:
+                current_total = count_cached_description_entries(data_args.description_cache_dir)
+                if current_total - existing_total_before >= max_new_entries:
+                    break
+            sample = train_dataset[idx]
+            if "description_input_ids" not in sample:
+                continue
+            cache_path = get_description_cache_path(
+                data_args.description_cache_dir,
+                sample["description_cache_key"],
             )
-            hidden_states = outputs.hidden_states[training_args.description_hidden_layer]
-            description_sequences = select_description_tokens(
-                hidden_states,
-                batch["description_attention_mask"],
-                training_args.description_max_tokens,
-            )
-        torch.save(description_sequences[0].cpu(), cache_path)
-        cached_count += 1
-        newly_cached_count += 1
+            if os.path.exists(cache_path):
+                continue
+            batch = data_collator([sample])
+            batch = move_batch_to_device(batch, training_args.device)
+            batch = move_images_to_vision_tower(batch, model)
+            with torch.no_grad(), build_autocast_context():
+                (
+                    _,
+                    description_position_ids,
+                    description_attention_mask,
+                    description_past_key_values,
+                    description_inputs_embeds,
+                    _,
+                    _,
+                    expanded_text_mask,
+                ) = wrapped_model.prepare_inputs_labels_for_multimodal(
+                    batch["description_input_ids"],
+                    None,
+                    batch["description_attention_mask"],
+                    None,
+                    None,
+                    batch.get("images"),
+                    return_token_masks=True,
+                )
+                outputs = model(
+                    input_ids=None,
+                    attention_mask=description_attention_mask,
+                    position_ids=description_position_ids,
+                    past_key_values=description_past_key_values,
+                    inputs_embeds=description_inputs_embeds,
+                    output_hidden_states=True,
+                    return_dict=True,
+                    use_cache=False,
+                )
+                hidden_states = outputs.hidden_states[training_args.b2_high_layer]
+                description_sequences, _ = select_expanded_description_tokens(
+                    hidden_states,
+                    expanded_text_mask,
+                    batch["description_input_ids"],
+                    batch["description_attention_mask"],
+                    batch.get("description_key_mask"),
+                    training_args.description_max_tokens,
+                )
+            torch.save(description_sequences[0].cpu(), cache_path)
+            cached_count += 1
+            newly_cached_count += 1
+    finally:
+        for target, had_cache_mode, previous_cache_mode in previous_cache_modes:
+            if had_cache_mode:
+                target.cache_extraction_mode = previous_cache_mode
+            else:
+                delattr(target, "cache_extraction_mode")
 
         if rank == 0 and (
             cached_count == 1
@@ -1334,6 +1417,23 @@ def maybe_sync_description_cache_settings(data_args, training_args):
     with open(meta_path, "r") as f:
         cache_meta = json.load(f)
 
+    cache_format = cache_meta.get("description_cache_format")
+    legacy_cache_compatible = (
+        cache_format is None and cache_meta.get("description_hidden_layer") is not None
+    )
+    if cache_format is None and legacy_cache_compatible:
+        rank0_print(
+            f"Accepting legacy description cache metadata at {meta_path}; "
+            f"treating it as {DESCRIPTION_CACHE_FORMAT}."
+        )
+        cache_format = DESCRIPTION_CACHE_FORMAT
+
+    if cache_format != DESCRIPTION_CACHE_FORMAT:
+        raise ValueError(
+            f"Description cache at {data_args.description_cache_dir} uses an old "
+            "token-selection format. Please regenerate it in a new cache directory."
+        )
+
     cached_max_tokens = cache_meta.get("description_max_tokens")
     if cached_max_tokens is not None and cached_max_tokens != training_args.description_max_tokens:
         rank0_print(
@@ -1342,13 +1442,13 @@ def maybe_sync_description_cache_settings(data_args, training_args):
         )
         training_args.description_max_tokens = cached_max_tokens
 
-    cached_hidden_layer = cache_meta.get("description_hidden_layer")
-    if cached_hidden_layer is not None and cached_hidden_layer != training_args.description_hidden_layer:
+    cached_b2_high_layer = cache_meta.get("b2_high_layer")
+    if cached_b2_high_layer is not None and cached_b2_high_layer != training_args.b2_high_layer:
         rank0_print(
-            f"Overriding description_hidden_layer from {training_args.description_hidden_layer} "
-            f"to cached value {cached_hidden_layer} based on {meta_path}."
+            f"Overriding b2_high_layer from {training_args.b2_high_layer} "
+            f"to cached value {cached_b2_high_layer} based on {meta_path}."
         )
-        training_args.description_hidden_layer = cached_hidden_layer
+        training_args.b2_high_layer = cached_b2_high_layer
 
 
 def should_load_previous_task_for_cache(training_args):
@@ -1409,6 +1509,10 @@ def build_model_config_with_local_towers(model_args, training_args):
         "use_spectral_role_prototype",
         "role_reset_on_strategy_change",
         "use_text_anchor_routing",
+        "use_stage1_band_schedule_eval",
+        "stage1_band_schedule_path",
+        "eval_use_role_spectral_prototype",
+        "eval_disable_role_image_prototype",
         "spectral_cutoff",
         "spectral_low_bins",
         "spectral_high_bins",
@@ -1536,6 +1640,10 @@ def train():
             use_spectral_role_prototype=model_args.use_spectral_role_prototype,
             role_reset_on_strategy_change=model_args.role_reset_on_strategy_change,
             use_text_anchor_routing=model_args.use_text_anchor_routing,
+            use_stage1_band_schedule_eval=model_args.use_stage1_band_schedule_eval,
+            stage1_band_schedule_path=model_args.stage1_band_schedule_path,
+            eval_use_role_spectral_prototype=model_args.eval_use_role_spectral_prototype,
+            eval_disable_role_image_prototype=model_args.eval_disable_role_image_prototype,
             spectral_cutoff=model_args.spectral_cutoff,
             spectral_low_bins=model_args.spectral_low_bins,
             spectral_high_bins=model_args.spectral_high_bins,

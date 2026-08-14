@@ -1,0 +1,36 @@
+{
+  "num_records": 1920,
+  "summary": {
+    "prompt_cluster_counts": {
+      "caption": 256,
+      "comparison_reasoning": 4,
+      "counting": 359,
+      "general_vqa": 112,
+      "math_reasoning": 1,
+      "mcq_reasoning": 112,
+      "mcq_visual_qa": 347,
+      "ocr_reading": 54,
+      "recognition": 132,
+      "yes_no": 543
+    },
+    "dataset_group_counts": {
+      "acl": 512,
+      "dcl": 640,
+      "ucit": 768
+    },
+    "objective_label_counts": {
+      "objective_caption": 256,
+      "objective_mcq": 347,
+      "objective_qa": 655,
+      "objective_reasoning": 476,
+      "objective_recognition": 186
+    }
+  },
+  "benchmarks": [
+    "ucit",
+    "acl",
+    "dcl"
+  ],
+  "max_samples_per_task": 128,
+  "seed": 42
+}

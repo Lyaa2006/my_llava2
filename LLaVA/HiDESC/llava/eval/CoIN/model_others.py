@@ -32,7 +32,15 @@ def eval_model(args):
     disable_torch_init()
     model_path = os.path.expanduser(args.model_path)
     model_name = get_model_name_from_path(model_path)
-    tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name, num_task=args.num_task, text_tower=args.text_tower)
+    tokenizer, model, image_processor, context_len = load_pretrained_model(
+        model_path,
+        args.model_base,
+        model_name,
+        num_task=args.num_task,
+        text_tower=args.text_tower,
+        routing_config_path=args.routing_config_path,
+        stage1_band_schedule_path=args.stage1_band_schedule_path,
+    )
     if image_processor is None:
         raise RuntimeError(
             f"Failed to initialize image processor for multimodal checkpoint: {model_path}. "
@@ -90,7 +98,8 @@ def eval_model(args):
                 num_beams=args.num_beams,
                 # no_repeat_ngram_size=3,
                 max_new_tokens=256,
-                use_cache=True)
+                use_cache=True,
+                stopping_criteria=[stopping_criteria])
 
         input_token_len = input_ids.shape[1]
         n_diff_input_output = (input_ids != output_ids[:, :input_token_len]).sum().item()
@@ -127,6 +136,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--text-tower", type=str)
     parser.add_argument("--num-task", type=int, default=0)
+    parser.add_argument("--routing-config-path", type=str, default=None)
+    parser.add_argument("--stage1-band-schedule-path", type=str, default=None)
     args = parser.parse_args()
 
     eval_model(args)

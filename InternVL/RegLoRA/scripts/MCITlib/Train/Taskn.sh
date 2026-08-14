@@ -1,5 +1,6 @@
 #!/bin/bash
 
+set -euo pipefail
 set -x
 
 ################## VICUNA ##################
@@ -15,6 +16,7 @@ read_config() {
 }
 
 NNODES=${NNODES:-1}
+MASTER_PORT=${MASTER_PORT:-9001}
 ID=$(read_config "$TRAIN_CONFIG" key_id)
 KEY_PATH=$(read_config "$TRAIN_CONFIG" key_path)
 BASE_MODEL=$(read_config "$TRAIN_CONFIG" base_model)
@@ -32,6 +34,7 @@ EPOCH=$(read_config "$TRAIN_CONFIG" epoch)
 BATCH_SIZE=$(read_config "$TRAIN_CONFIG" batch_size)
 GRAD_ACC=$(read_config "$TRAIN_CONFIG" grad_acc)
 LR=$(read_config "$TRAIN_CONFIG" lr)
+MAX_STEPS=$(python3 -c "import json; print(json.load(open('$TRAIN_CONFIG')).get('max_steps', -1))")
 
 GPU_LIST=""
 for i in $(seq 0 $((GPU_NUM-1))); do
@@ -43,7 +46,8 @@ python key_elements_identification.py $ID $KEY_PATH $BASE_MODEL
 REG_PATH="${PREVIOUS}_topP.pth"
 
 echo "Begin running..."
-torchrun --nnodes=${NNODES} --nproc_per_node=${GPU_NUM} --master_port 9001 llava/train/train_mem.py \
+mkdir -p "$OUTPUT_DIR"
+torchrun --nnodes=${NNODES} --nproc_per_node=${GPU_NUM} --master_port ${MASTER_PORT} llava/train/train_mem.py \
     --deepspeed ./scripts/zero2.json \
     --lora_enable True --lora_r $RANK --lora_alpha $((RANK * 2)) \
     --regularization_info_path $REG_PATH \
@@ -64,6 +68,7 @@ torchrun --nnodes=${NNODES} --nproc_per_node=${GPU_NUM} --master_port 9001 llava
     --output_dir $OUTPUT_DIR \
     --cur_task $CUR_TASK \
     --num_train_epochs $EPOCH \
+    --max_steps $MAX_STEPS \
     --per_device_train_batch_size $BATCH_SIZE \
     --per_device_eval_batch_size 16 \
     --gradient_accumulation_steps $GRAD_ACC \

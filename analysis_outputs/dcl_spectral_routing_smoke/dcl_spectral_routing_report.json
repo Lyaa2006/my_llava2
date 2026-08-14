@@ -1,0 +1,518 @@
+{
+  "date": "2026-08-05",
+  "benchmark": "dcl",
+  "model_path": "/mnt/lyaa/MCITlib/runs/MLLM-DCL/HiDe/hide_dcl_full_20260718_204518/checkpoints/Task5_llava_lora",
+  "model_base": "/mnt/lyaa/my_llava/llava-v1.5-7b",
+  "text_tower": "/mnt/lyaa/my_llava/clip-vit-large-patch14-336",
+  "prototype_cache": "/mnt/lyaa/MCITlib/analysis_outputs/dcl_spectral_routing_smoke/dcl_spectral_prototypes.pt",
+  "prototype_limit": 64,
+  "eval_limit": 128,
+  "active_experts": 5,
+  "routing_config": {
+    "use_spectral_image_routing": true,
+    "use_legacy_global_image_routing": false,
+    "use_text_anchor_routing": true,
+    "use_spectral_role_prototype": false,
+    "spectral_cutoff": 0.33,
+    "spectral_low_bins": 4,
+    "spectral_high_bins": 4,
+    "spectral_low_scale": 0.7,
+    "spectral_high_scale": 0.3,
+    "spectral_image_weight": 0.5,
+    "text_weight": 0.5,
+    "history_weight": 0.15,
+    "routing_image_weight": 0.5,
+    "routing_text_weight": 0.5,
+    "routing_history_weight": 0.15,
+    "routing_temperature": 0.1,
+    "routing_min_similarity": -1.0,
+    "routing_prior_momentum": 0.8,
+    "role_top_k": 2,
+    "role_birth_threshold": 0.7,
+    "role_assignment_top_k": 1,
+    "role_assignment_min_similarity": 0.75,
+    "role_assignment_margin": 0.1,
+    "role_member_top_k": 2,
+    "routing_role_prior_weight": 0.1,
+    "routing_role_member_weight": 0.5,
+    "routing_role_size_penalty": 0.2,
+    "routing_early_layers": 16,
+    "routing_early_mode": "uniform",
+    "routing_middle_layers": 13,
+    "routing_middle_temperature": 0.5,
+    "routing_middle_role_gamma": 1.5,
+    "routing_middle_role_margin_low": 0.1,
+    "routing_middle_role_margin_high": 0.3,
+    "routing_middle_intra_margin_low": 0.05,
+    "routing_middle_intra_margin_high": 0.2,
+    "routing_late_layers": 3,
+    "routing_late_top_k": 2
+  },
+  "prototype_counts": [
+    64,
+    64,
+    64,
+    64,
+    64
+  ],
+  "tasks": [
+    {
+      "task_id": 0,
+      "task_name": "RS",
+      "sample_count": 128,
+      "task_score": {
+        "avg_score": [
+          1.547878,
+          0.144683,
+          -0.830618,
+          0.042909,
+          -0.904866
+        ],
+        "top1_rate": [
+          0.945312,
+          0.054688,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "expected_expert_top1_rate": 0.9453125,
+        "margin_mean": 1.3969048600411043,
+        "softmax_entropy_mean": 1.1320897224359214
+      },
+      "stages": {
+        "early": {
+          "avg_weight": [
+            0.28818,
+            0.132796,
+            0.001332,
+            0.289512,
+            0.28818
+          ],
+          "top1_rate": [
+            0.0,
+            0.148438,
+            0.0,
+            0.851562,
+            0.0
+          ],
+          "entropy_mean": 1.1555373448209139,
+          "margin_mean": 0.0793952526355497,
+          "expected_expert_top1_rate": 0.0
+        },
+        "middle": {
+          "avg_weight": [
+            0.841131,
+            0.112929,
+            0.000116,
+            0.040433,
+            0.00539
+          ],
+          "top1_rate": [
+            0.898438,
+            0.101562,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 0.3048963467927024,
+          "margin_mean": 0.8326902708733428,
+          "expected_expert_top1_rate": 0.8984375
+        },
+        "late": {
+          "avg_weight": [
+            0.947039,
+            0.052817,
+            7.5e-05,
+            6.9e-05,
+            0.0
+          ],
+          "top1_rate": [
+            0.945312,
+            0.054688,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 0.012688939690362278,
+          "margin_mean": 0.9920207510015724,
+          "expected_expert_top1_rate": 0.9453125
+        }
+      }
+    },
+    {
+      "task_id": 1,
+      "task_name": "Med",
+      "sample_count": 128,
+      "task_score": {
+        "avg_score": [
+          -0.773059,
+          1.340882,
+          -0.422379,
+          0.365527,
+          -0.510992
+        ],
+        "top1_rate": [
+          0.0,
+          0.984375,
+          0.0,
+          0.015625,
+          0.0
+        ],
+        "expected_expert_top1_rate": 0.984375,
+        "margin_mean": 1.0023982962884475,
+        "softmax_entropy_mean": 1.256400209851563
+      },
+      "stages": {
+        "early": {
+          "avg_weight": [
+            0.003733,
+            0.981813,
+            0.003494,
+            0.007227,
+            0.003733
+          ],
+          "top1_rate": [
+            0.0,
+            0.984375,
+            0.0,
+            0.015625,
+            0.0
+          ],
+          "entropy_mean": 0.05126866706632427,
+          "margin_mean": 0.9784766991072047,
+          "expected_expert_top1_rate": 0.984375
+        },
+        "middle": {
+          "avg_weight": [
+            0.000151,
+            0.98546,
+            0.001152,
+            0.012404,
+            0.000833
+          ],
+          "top1_rate": [
+            0.0,
+            0.984375,
+            0.0,
+            0.015625,
+            0.0
+          ],
+          "entropy_mean": 0.01444610264587709,
+          "margin_mean": 0.9929437880774277,
+          "expected_expert_top1_rate": 0.984375
+        },
+        "late": {
+          "avg_weight": [
+            0.0,
+            0.981072,
+            0.0,
+            0.018928,
+            0.0
+          ],
+          "top1_rate": [
+            0.0,
+            0.984375,
+            0.0,
+            0.015625,
+            0.0
+          ],
+          "entropy_mean": 0.011154849518007381,
+          "margin_mean": 0.9931890823597606,
+          "expected_expert_top1_rate": 0.984375
+        }
+      }
+    },
+    {
+      "task_id": 2,
+      "task_name": "AD",
+      "sample_count": 128,
+      "task_score": {
+        "avg_score": [
+          -1.041731,
+          -0.409518,
+          1.814177,
+          0.060978,
+          -0.42392
+        ],
+        "top1_rate": [
+          0.0,
+          0.0,
+          1.0,
+          0.0,
+          0.0
+        ],
+        "expected_expert_top1_rate": 1.0,
+        "margin_mean": 1.7531996946781874,
+        "softmax_entropy_mean": 1.0238518337719142
+      },
+      "stages": {
+        "early": {
+          "avg_weight": [
+            0.001527,
+            0.001565,
+            0.496928,
+            0.498454,
+            0.001527
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "entropy_mean": 0.7242610533721745,
+          "margin_mean": 0.0015266742557287216,
+          "expected_expert_top1_rate": 0.0
+        },
+        "middle": {
+          "avg_weight": [
+            2.3e-05,
+            6.6e-05,
+            0.969491,
+            0.030338,
+            8.2e-05
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 0.13657245167996734,
+          "margin_mean": 0.939153319442994,
+          "expected_expert_top1_rate": 1.0
+        },
+        "late": {
+          "avg_weight": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ],
+          "entropy_mean": 1.2123534872399144e-06,
+          "margin_mean": 0.9999998545303103,
+          "expected_expert_top1_rate": 1.0
+        }
+      }
+    },
+    {
+      "task_id": 3,
+      "task_name": "Sci",
+      "sample_count": 128,
+      "task_score": {
+        "avg_score": [
+          -0.662922,
+          -0.287036,
+          -0.468256,
+          1.595986,
+          -0.177784
+        ],
+        "top1_rate": [
+          0.0,
+          0.0,
+          0.007812,
+          0.984375,
+          0.007812
+        ],
+        "expected_expert_top1_rate": 0.984375,
+        "margin_mean": 1.5318267723778263,
+        "softmax_entropy_mean": 1.1328687858767807
+      },
+      "stages": {
+        "early": {
+          "avg_weight": [
+            0.222139,
+            0.020505,
+            0.156539,
+            0.378678,
+            0.222139
+          ],
+          "top1_rate": [
+            0.0,
+            0.023438,
+            0.0,
+            0.976562,
+            0.0
+          ],
+          "entropy_mean": 1.298489781562239,
+          "margin_mean": 0.09978533058892936,
+          "expected_expert_top1_rate": 0.9765625
+        },
+        "middle": {
+          "avg_weight": [
+            0.010622,
+            0.013395,
+            0.02748,
+            0.922491,
+            0.026012
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.0,
+            0.992188,
+            0.007812
+          ],
+          "entropy_mean": 0.2674250933341682,
+          "margin_mean": 0.8636738011919078,
+          "expected_expert_top1_rate": 0.9921875
+        },
+        "late": {
+          "avg_weight": [
+            0.0,
+            2.5e-05,
+            0.006178,
+            0.986973,
+            0.006824
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.007812,
+            0.984375,
+            0.007812
+          ],
+          "entropy_mean": 0.01535063341813896,
+          "margin_mean": 0.9862683528372742,
+          "expected_expert_top1_rate": 0.984375
+        }
+      }
+    },
+    {
+      "task_id": 4,
+      "task_name": "Fin",
+      "sample_count": 128,
+      "task_score": {
+        "avg_score": [
+          -1.023042,
+          -0.642088,
+          -0.418062,
+          0.368142,
+          1.715038
+        ],
+        "top1_rate": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "expected_expert_top1_rate": 1.0,
+        "margin_mean": 1.3468967939261347,
+        "softmax_entropy_mean": 1.0827045971527696
+      },
+      "stages": {
+        "early": {
+          "avg_weight": [
+            0.331433,
+            0.000249,
+            0.002726,
+            0.334159,
+            0.331433
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0
+          ],
+          "entropy_mean": 1.1161865973845124,
+          "margin_mean": 0.0027258028276264668,
+          "expected_expert_top1_rate": 0.0
+        },
+        "middle": {
+          "avg_weight": [
+            0.00396,
+            4e-06,
+            9.3e-05,
+            0.065477,
+            0.930465
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "entropy_mean": 0.2657152392202988,
+          "margin_mean": 0.8649886948405765,
+          "expected_expert_top1_rate": 1.0
+        },
+        "late": {
+          "avg_weight": [
+            0.0,
+            0.0,
+            0.0,
+            5e-06,
+            0.999995
+          ],
+          "top1_rate": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "entropy_mean": 5.618843909172e-05,
+          "margin_mean": 0.999990635809484,
+          "expected_expert_top1_rate": 1.0
+        }
+      }
+    }
+  ],
+  "summary": {
+    "expected_expert_top1_rate": {
+      "task_score": 0.9828125,
+      "early": 0.3921875,
+      "middle": 0.975,
+      "late": 0.9828125
+    },
+    "mean_entropy": {
+      "task_score": 1.1255830298177898,
+      "early": 0.8691486888412328,
+      "middle": 0.19781104673460276,
+      "late": 0.007850364683817515
+    },
+    "mean_margin": {
+      "task_score": 1.40624528346234,
+      "early": 0.23238195188300778,
+      "middle": 0.8986899748852497,
+      "late": 0.9942937353076802
+    },
+    "avg_weight_by_stage": {
+      "early": [
+        0.169402,
+        0.227386,
+        0.132204,
+        0.301606,
+        0.169402
+      ],
+      "middle": [
+        0.171177,
+        0.222371,
+        0.199666,
+        0.214229,
+        0.192556
+      ],
+      "late": [
+        0.189408,
+        0.206783,
+        0.201251,
+        0.201195,
+        0.201364
+      ]
+    }
+  }
+}

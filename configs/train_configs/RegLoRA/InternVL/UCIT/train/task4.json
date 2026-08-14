@@ -1,13 +1,15 @@
 {
   "key_id": 2,
-  "key_path": "/your_ckpts_path/MCITlib/UCIT/InternVL/RegLoRA",
+  "key_path": "/mnt/lyaa/MCITlib/checkpoints/UCIT/InternVL/RegLoRA",
   "base_model": "internvl",
-  "gpu_num": 2,
+  "gpu_num": 4,
   "rank": 16,
-  "previous_model": "/your_ckpts_path/MCITlib/UCIT/InternVL/RegLoRA/Task3_internvl_lora_merged",
-  "output_dir": "/your_ckpts_path/MCITlib/UCIT/InternVL/RegLoRA/Task4_internvl_lora",
+  "expert_num": 8,
+  "previous_model": "/mnt/lyaa/MCITlib/checkpoints/UCIT/InternVL/RegLoRA/Task3_internvl_lora",
+  "output_dir": "/mnt/lyaa/MCITlib/checkpoints/UCIT/InternVL/RegLoRA/Task4_internvl_lora",
   "epoch": 1,
   "batch_size": 16,
-  "grad_acc": 2,
+  "grad_acc": 1,
+  "cur_task": 3,
   "lr": 1e-4
 }

@@ -24,6 +24,8 @@ ROLEFILLED_ROOT="${ROLEFILLED_ROOT:-$MCITLIB_ROOT/checkpoints/UCIT/LLaVA/HiDESC_
 RESULT_ROOT="${RESULT_ROOT:-$MCITLIB_ROOT/LLaVA/HiDESC/results/UCIT/full_each_dataset_hiddesc_from_hidecl_rolefilled_upto_task5}"
 TEXT_TOWER="${TEXT_TOWER:-/mnt/lyaa/my_llava/clip-vit-large-patch14-336}"
 MODEL_CONFIG="${MODEL_CONFIG:-$CONFIG_ROOT/modal_configs/llava.json}"
+ROUTING_CONFIG_PATH="${ROUTING_CONFIG_PATH:-configs/routing_configs/HiDESC/ucit_role_3way_fft_soft.json}"
+STAGE1_BAND_SCHEDULE_PATH="${STAGE1_BAND_SCHEDULE_PATH:-configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json}"
 
 if [ ! -d "$ROLEFILLED_ROOT" ]; then
     echo "Converted checkpoint root does not exist: $ROLEFILLED_ROOT" >&2
@@ -39,13 +41,15 @@ echo "Logging to: $LOG_FILE"
 echo "Using CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 echo "ROLEFILLED_ROOT=$ROLEFILLED_ROOT"
 echo "RESULT_ROOT=$RESULT_ROOT"
+echo "ROUTING_CONFIG_PATH=$ROUTING_CONFIG_PATH"
+echo "STAGE1_BAND_SCHEDULE_PATH=$STAGE1_BAND_SCHEDULE_PATH"
 echo "TMP_ROOT=$TMP_ROOT"
 echo "Start time: $(date)"
 
 write_eval_cfg() {
     local task_id="$1"
     local cfg_path="$2"
-    python3 - "$task_id" "$cfg_path" "$ROLEFILLED_ROOT" "$RESULT_ROOT" "$TEXT_TOWER" <<'PY'
+    python3 - "$task_id" "$cfg_path" "$ROLEFILLED_ROOT" "$RESULT_ROOT" "$TEXT_TOWER" "$ROUTING_CONFIG_PATH" "$STAGE1_BAND_SCHEDULE_PATH" <<'PY'
 import json
 import os
 import sys
@@ -55,6 +59,8 @@ cfg_path = sys.argv[2]
 rolefilled_root = sys.argv[3]
 result_root = sys.argv[4]
 text_tower = sys.argv[5]
+routing_config_path = sys.argv[6]
+stage1_band_schedule_path = sys.argv[7]
 
 cfg = {
     "gpu_num": 2,
@@ -63,6 +69,8 @@ cfg = {
     "result_path": result_root,
     "text_tower": text_tower,
     "num_task": 6,
+    "routing_config_path": routing_config_path,
+    "stage1_band_schedule_path": stage1_band_schedule_path,
 }
 with open(cfg_path, "w", encoding="utf-8") as f:
     json.dump(cfg, f, indent=2)

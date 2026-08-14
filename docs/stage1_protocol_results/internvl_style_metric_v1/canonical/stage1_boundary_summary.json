@@ -1,0 +1,47 @@
+{
+  "num_reports": 2,
+  "reports": [
+    {
+      "model": "internvl",
+      "dataset": "acl",
+      "split_name": "leave_one_dataset::acl",
+      "split_type": "leave_one_dataset_out",
+      "b1": 12,
+      "b2": 17,
+      "b1_ratio": 0.375,
+      "b2_ratio": 0.53125,
+      "sample_count": 31,
+      "report_path": "docs/stage1_protocol_results/internvl_style_metric_v1/canonical/leave_one_dataset__acl/boundary_report.json"
+    },
+    {
+      "model": "internvl",
+      "dataset": "ucit",
+      "split_name": "leave_one_dataset::ucit",
+      "split_type": "leave_one_dataset_out",
+      "b1": 14,
+      "b2": 18,
+      "b1_ratio": 0.4375,
+      "b2_ratio": 0.5625,
+      "sample_count": 57,
+      "report_path": "docs/stage1_protocol_results/internvl_style_metric_v1/canonical/leave_one_dataset__ucit/boundary_report.json"
+    }
+  ],
+  "aggregate": {
+    "b1_mean": 13.0,
+    "b1_std": 1.0,
+    "b2_mean": 17.5,
+    "b2_std": 0.5,
+    "b1_median": 13.0,
+    "b2_median": 17.5,
+    "boundary_windows": {
+      "b1": [
+        12,
+        13
+      ],
+      "b2": [
+        17,
+        17
+      ]
+    }
+  }
+}

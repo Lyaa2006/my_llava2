@@ -23,6 +23,7 @@ class _SpectralHarness(LlavaMetaForCausalLM):
     def __init__(self):
         self.relation_routing_config = {
             "use_spectral_image_routing": True,
+            "use_spectral_role_prototype": True,
             "use_text_anchor_routing": True,
             "spectral_cutoff": 0.33,
             "spectral_low_bins": 4,
@@ -50,19 +51,10 @@ class _SpectralHarness(LlavaMetaForCausalLM):
         self.max_task_slots = 4
         self.max_role_slots = 4
         self.expert_num = 4
-        self.image_anchors = nn.ParameterList(
-            [nn.Parameter(torch.zeros(1, 768)) for _ in range(self.max_task_slots)]
-        )
         self.text_anchors = nn.ParameterList(
             [nn.Parameter(torch.zeros(1, 768)) for _ in range(self.max_task_slots)]
         )
         self.text_boundary = nn.ParameterList(
-            [
-                nn.Parameter(torch.tensor([1.0], dtype=torch.float32))
-                for _ in range(self.max_task_slots)
-            ]
-        )
-        self.image_boundary = nn.ParameterList(
             [
                 nn.Parameter(torch.tensor([1.0], dtype=torch.float32))
                 for _ in range(self.max_task_slots)
@@ -80,9 +72,6 @@ class _SpectralHarness(LlavaMetaForCausalLM):
         )
         self.spectral_image_anchors = nn.ParameterList(
             [nn.Parameter(torch.zeros(1, self.spectral_image_dim)) for _ in range(self.max_task_slots)]
-        )
-        self.role_image_prototypes = nn.ParameterList(
-            [nn.Parameter(torch.zeros(1, 768)) for _ in range(self.max_role_slots)]
         )
         self.role_spectral_prototypes = nn.ParameterList(
             [nn.Parameter(torch.zeros(1, self.spectral_image_dim)) for _ in range(self.max_role_slots)]

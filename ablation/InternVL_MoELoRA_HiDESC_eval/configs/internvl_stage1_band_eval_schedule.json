@@ -1,0 +1,42 @@
+{
+  "model_family": "internvl",
+  "version": "stage1_band_eval_v1",
+  "early_core": [
+    1,
+    11
+  ],
+  "b1_band": [
+    12,
+    14
+  ],
+  "middle_core": [
+    15,
+    26
+  ],
+  "b2_band": [
+    27,
+    29
+  ],
+  "late_core": [
+    30,
+    32
+  ],
+  "b1_center": 14,
+  "b2_center": 28,
+  "b1_core": [
+    14,
+    14
+  ],
+  "b2_core": [
+    28,
+    28
+  ],
+  "alpha_by_layer": {
+    "12": 0.25,
+    "13": 0.5,
+    "14": 0.75,
+    "27": 0.25,
+    "28": 0.5,
+    "29": 0.75
+  }
+}

@@ -10,7 +10,6 @@
   "description_cache_max_new_entries": 8,
   "lr": 0.0002,
   "cur_task": 4,
-  "description_hidden_layer": -2,
   "description_max_tokens": 32,
   "description_focus_weight": 0.4,
   "description_energy_weight": 0.001,
@@ -20,5 +19,14 @@
   "max_steps": 1,
   "save_steps": 1,
   "model_max_length": 1024,
-  "dataloader_num_workers": 0
+  "dataloader_num_workers": 0,
+  "b1_low_layer": 15,
+  "b1_high_layer": 18,
+  "b2_low_layer": 29,
+  "b2_high_layer": 31,
+  "align_band_eta": 0.5,
+  "struct_band_eta": 0.35,
+  "struct_band_energy_rho": 1.0,
+  "loss_band_ema_gamma": 0.9,
+  "loss_band_position_eps": 0.05
 }

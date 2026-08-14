@@ -1,5 +1,6 @@
 #!/bin/bash
 
+set -euo pipefail
 set -x
 
 ################## VICUNA ##################
@@ -12,6 +13,10 @@ TRAIN_CONFIG=$3
 
 read_config() {
     python3 -c "import json; print(json.load(open('$1'))['$2'])"
+}
+
+read_optional_config() {
+    python3 -c "import json; print(json.load(open('$1')).get('$2', ''))"
 }
 
 NNODES=${NNODES:-1}
@@ -27,15 +32,25 @@ EPOCH=$(read_config "$TRAIN_CONFIG" epoch)
 BATCH_SIZE=$(read_config "$TRAIN_CONFIG" batch_size)
 GRAD_ACC=$(read_config "$TRAIN_CONFIG" grad_acc)
 LR=$(read_config "$TRAIN_CONFIG" lr)
+EXPERT_NUM=$(read_optional_config "$TRAIN_CONFIG" expert_num)
 
-GPU_LIST=""
-for i in $(seq 0 $((GPU_NUM-1))); do
-    GPU_LIST+="$i,"
-done
-GPU_LIST=${GPU_LIST%,}
+if [ -n "$EXPERT_NUM" ]; then
+    python3 - "$RANK" "$EXPERT_NUM" <<'PY'
+import sys
+r = int(sys.argv[1])
+expert = int(sys.argv[2])
+if expert <= 0:
+    raise SystemExit("expert_num must be positive")
+if r % expert != 0:
+    raise SystemExit(f"lora rank {r} must be divisible by expert_num {expert}")
+PY
+fi
+
+MASTER_PORT="${MASTER_PORT:-9001}"
+mkdir -p "$OUTPUT_DIR"
 
 echo "Begin running..."
-torchrun --nnodes=${NNODES} --nproc_per_node=${GPU_NUM} --master_port 9001 llava/train/train_mem.py \
+torchrun --nnodes=${NNODES} --nproc_per_node=${GPU_NUM} --master_port "${MASTER_PORT}" llava/train/train_mem.py \
     --deepspeed ./scripts/zero2.json \
     --lora_enable True --lora_r $RANK --lora_alpha $((RANK * 2)) \
     --model_name_or_path $MODEL_NAME \

@@ -1,0 +1,53 @@
+{
+  "model_family": "llava",
+  "version": "stage1_band_eval_v1",
+  "early_core": [
+    1,
+    14
+  ],
+  "b1_band": [
+    15,
+    18
+  ],
+  "middle_core": [
+    19,
+    28
+  ],
+  "b2_band": [
+    29,
+    31
+  ],
+  "late_core": [
+    32,
+    32
+  ],
+  "b1_center": 16,
+  "b2_center": 30,
+  "b1_core": [
+    16,
+    17
+  ],
+  "b2_core": [
+    30,
+    30
+  ],
+  "alpha_by_layer": {
+    "15": 0.25,
+    "16": 0.5,
+    "17": 0.5,
+    "18": 0.75,
+    "29": 0.25,
+    "30": 0.5,
+    "31": 0.75
+  },
+  "alpha_source": {
+    "b1": "window plus center-derived shoulder/core template",
+    "b2": "window plus center-derived shoulder/core template"
+  },
+  "use_spectral_image_routing": true,
+  "use_spectral_role_prototype": true,
+  "use_stage1_band_schedule_eval": true,
+  "eval_use_role_spectral_prototype": true,
+  "eval_disable_role_image_prototype": true,
+  "stage1_band_schedule_path": "configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json"
+}

@@ -1,0 +1,6 @@
+{
+  "gpu_num": 4,
+  "stage": "RegLoRA-smoke-task4",
+  "model_path": "/mnt/lyaa/MCITlib/checkpoints/MLLM-DCL/InternVL/RegLoRA/smoke/Task4_internvl_lora",
+  "result_path": "./results/DCL/each_dataset_smoke"
+}

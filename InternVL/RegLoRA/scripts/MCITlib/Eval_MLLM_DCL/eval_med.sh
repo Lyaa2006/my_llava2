@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 MODEL_CONFIG=$1
 DATA_CONFIG=$2
 TRAIN_CONFIG=$3
@@ -29,7 +31,9 @@ IFS=',' read -ra GPULIST <<< "$CUDA_VISIBLE_DEVICES"
 CHUNKS=${#GPULIST[@]}
 
 RESULT_DIR="$RESULT_PATH/$TASK"
+mkdir -p "$RESULT_DIR/$STAGE"
 
+PIDS=()
 for IDX in $(seq 0 $((CHUNKS-1))); do
     CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python -m llava.eval.CoIN.model_pvqa \
         --model-path $MODELPATH \
@@ -41,9 +45,12 @@ for IDX in $(seq 0 $((CHUNKS-1))); do
         --chunk-idx $IDX \
         --temperature 0 \
         --conv-mode vicuna_v1 &
+    PIDS+=($!)
 done
 
-wait
+for PID in "${PIDS[@]}"; do
+    wait "$PID"
+done
 
 output_file=$RESULT_DIR/$STAGE/merge.jsonl
 

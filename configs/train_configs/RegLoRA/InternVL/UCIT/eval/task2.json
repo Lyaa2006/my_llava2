@@ -1,6 +1,6 @@
 {
-  "gpu_num": 2,
+  "gpu_num": 4,
   "stage": "RegLoRA-task2",
-  "model_path": "/your_ckpts_path/MCITlib/UCIT/InternVL/RegLoRA/Task2_internvl_lora_merged",
+  "model_path": "/mnt/lyaa/MCITlib/checkpoints/UCIT/InternVL/RegLoRA/Task2_internvl_lora",
   "result_path": "./results/UCIT/each_dataset"
 }

@@ -1,4 +1,6 @@
+import copy
 import datetime
+import glob
 import logging
 import logging.handlers
 import os
@@ -97,6 +99,66 @@ def disable_torch_init():
     import torch
     setattr(torch.nn.Linear, "reset_parameters", lambda self: None)
     setattr(torch.nn.LayerNorm, "reset_parameters", lambda self: None)
+
+
+def resolve_image_path(image_folder, image_file):
+    """
+    Resolve an image path against an image folder.
+
+    Returns:
+        (resolved_path, reason)
+        reason is one of: "exact", "resolved", "missing", "ambiguous", "invalid"
+    """
+    if not image_file or not image_folder:
+        return None, "invalid"
+
+    exact_path = os.path.join(image_folder, image_file)
+    if os.path.exists(exact_path):
+        return exact_path, "exact"
+
+    basename = os.path.basename(image_file)
+    matches = sorted(glob.glob(os.path.join(image_folder, "**", basename), recursive=True))
+    if len(matches) == 1:
+        return matches[0], "resolved"
+    if len(matches) == 0:
+        return None, "missing"
+    return None, "ambiguous"
+
+
+def filter_samples_with_existing_images(samples, image_folder, image_key="image"):
+    """
+    Keep only samples whose image can be resolved safely.
+
+    If a single unique alternate path exists for a missing image, the sample is
+    rewritten to use that path. Ambiguous or missing samples are dropped.
+    """
+    kept_samples = []
+    skipped_samples = []
+
+    for sample in samples:
+        image_file = sample.get(image_key)
+        if not image_file:
+            kept_samples.append(sample)
+            continue
+
+        resolved_path, reason = resolve_image_path(image_folder, image_file)
+        if resolved_path is None:
+            skipped_samples.append(
+                {
+                    "image": image_file,
+                    "reason": reason,
+                }
+            )
+            continue
+
+        if reason == "resolved":
+            repaired = copy.deepcopy(sample)
+            repaired[image_key] = os.path.relpath(resolved_path, image_folder)
+            kept_samples.append(repaired)
+        else:
+            kept_samples.append(sample)
+
+    return kept_samples, skipped_samples
 
 
 def violates_moderation(text):

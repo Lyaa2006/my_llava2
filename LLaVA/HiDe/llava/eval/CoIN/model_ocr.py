@@ -9,6 +9,7 @@ from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_S
 from llava.conversation import conv_templates, SeparatorStyle
 from llava.model.builder import load_pretrained_model
 from llava.utils import disable_torch_init
+from llava.utils import filter_samples_with_existing_images
 from llava.mm_utils import tokenizer_image_token, process_images, get_model_name_from_path, KeywordsStoppingCriteria
 from llava.eval.CoIN.coin_utils import get_model_name_from_path
 from torch.utils.data import Dataset, DataLoader
@@ -32,7 +33,15 @@ def get_chunk(lst, n, k):
 # Custom dataset class
 class CustomDataset(Dataset):
     def __init__(self, questions, image_folder, tokenizer, image_processor, model_config):
-        self.questions = questions
+        filtered_questions, skipped_samples = filter_samples_with_existing_images(questions, image_folder)
+        if skipped_samples:
+            print(
+                f"Skipping {len(skipped_samples)} bad image samples out of {len(questions)} "
+                f"for image_folder={image_folder}"
+            )
+            for item in skipped_samples[:5]:
+                print(f"  - {item['image']} ({item['reason']})")
+        self.questions = filtered_questions
         self.image_folder = image_folder
         self.tokenizer = tokenizer
         self.image_processor = image_processor
@@ -100,6 +109,7 @@ def eval_model(args):
         print(f'It seems that this is a plain model, but it is not using a mmtag prompt, auto switching to {args.conv_mode}.')
 
     data_loader = create_data_loader(questions, args.image_folder, tokenizer, image_processor, model.config)
+    questions = data_loader.dataset.questions
 
     for (input_ids, image_tensor), line in tqdm(zip(data_loader, questions), total=len(questions)):
         idx = line["question_id"]

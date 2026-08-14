@@ -1,0 +1,4 @@
+path,model,dataset,b1_low,b1_high,b2_low,b2_high
+/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/leave_one_dataset__acl/boundary_report.json,internvl,acl,14,14,18,18
+/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/leave_one_dataset__dcl/boundary_report.json,internvl,dcl,10,10,28,28
+/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/leave_one_dataset__ucit/boundary_report.json,internvl,ucit,20,20,24,24

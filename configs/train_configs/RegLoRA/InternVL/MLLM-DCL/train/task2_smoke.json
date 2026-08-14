@@ -1,0 +1,15 @@
+{
+  "key_id": 0,
+  "key_path": "/mnt/lyaa/MCITlib/checkpoints/MLLM-DCL/InternVL/RegLoRA/smoke",
+  "base_model": "internvl",
+  "gpu_num": 4,
+  "rank": 40,
+  "expert_num": 5,
+  "previous_model": "/mnt/lyaa/MCITlib/checkpoints/MLLM-DCL/InternVL/RegLoRA/smoke/Task1_internvl_lora",
+  "output_dir": "/mnt/lyaa/MCITlib/checkpoints/MLLM-DCL/InternVL/RegLoRA/smoke/Task2_internvl_lora",
+  "epoch": 1,
+  "batch_size": 4,
+  "grad_acc": 1,
+  "cur_task": 1,
+  "lr": 1e-4
+}

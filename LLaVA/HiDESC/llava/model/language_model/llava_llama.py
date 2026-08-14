@@ -68,18 +68,10 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             or 768 * (spectral_low_bins + spectral_high_bins)
         )
 
-        # Initialize anchors
-        self.image_anchors = nn.ParameterList(
-            [nn.Parameter(0.1 * torch.randn(1, 768)) for _ in range(self.max_task_slots)]
-        )
-
         self.text_anchors = nn.ParameterList(
             [nn.Parameter(0.1 * torch.randn(1, 768)) for _ in range(self.max_task_slots)]
         )
 
-        self.image_boundary = nn.ParameterList(
-            [nn.Parameter(torch.ones(1, dtype=torch.bfloat16)) for _ in range(self.max_task_slots)]
-            )
         self.text_boundary = nn.ParameterList(
             [nn.Parameter(torch.ones(1, dtype=torch.bfloat16)) for _ in range(self.max_task_slots)]
             )
@@ -98,9 +90,6 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
 
         self.expert_weight = [0., 0., 0., 0., 0., 0., 0., 0.]
         self.expert_usage_prior = nn.Parameter(torch.zeros(self.max_task_slots), requires_grad=False)
-        self.role_image_prototypes = nn.ParameterList(
-            [nn.Parameter(torch.zeros(1, 768), requires_grad=False) for _ in range(self.max_role_slots)]
-        )
         self.role_spectral_prototypes = nn.ParameterList(
             [
                 nn.Parameter(
@@ -120,9 +109,13 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self.active_role_count = nn.Parameter(torch.zeros(1), requires_grad=False)
         self.relation_routing_config = {
             "use_spectral_image_routing": True,
-            "use_spectral_role_prototype": False,
+            "use_spectral_role_prototype": True,
             "role_reset_on_strategy_change": False,
             "use_text_anchor_routing": True,
+            "use_stage1_band_schedule_eval": True,
+            "stage1_band_schedule_path": None,
+            "eval_use_role_spectral_prototype": True,
+            "eval_disable_role_image_prototype": True,
             "spectral_cutoff": 0.33,
             "spectral_low_bins": 4,
             "spectral_high_bins": 4,

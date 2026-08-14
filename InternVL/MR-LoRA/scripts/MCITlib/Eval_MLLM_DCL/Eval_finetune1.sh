@@ -1,7 +1,13 @@
-# #!/bin/bash
+#!/bin/bash
+set -e
 
 TASK_ID=$1
-HARD_PATH=/your_path/MCITlib_v3
+SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(realpath "$SCRIPT_DIR/../../..")"
+MCITLIB_ROOT="$(realpath "$SCRIPT_DIR/../../../../..")"
+HARD_PATH="${HARD_PATH:-$MCITLIB_ROOT}"
+
+cd "$PROJECT_ROOT"
 
 if [ "$TASK_ID" == "1" ]; then
     bash scripts/MCITlib/Eval_MLLM_DCL/eval_rs.sh $HARD_PATH/configs/model_configs/internvl.json $HARD_PATH/configs/data_configs/MLLM-DCL/RS.json $HARD_PATH/configs/train_configs/MR-LoRA/InternVL/MLLM-DCL/eval/task1.json

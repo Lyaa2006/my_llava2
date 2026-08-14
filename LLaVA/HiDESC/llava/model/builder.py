@@ -24,6 +24,7 @@ from llava.model import *
 from llava.constants import DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+WORKSPACE_ROOT = os.path.abspath(os.path.join(PROJECT_ROOT, "..", ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
@@ -62,7 +63,138 @@ def _infer_effective_num_task(checkpoint_dir, declared_num_task):
 
     return declared_num_task
 
-def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, load_4bit=False, device_map="auto", device="cuda", num_task=10, text_tower=None, **kwargs):
+
+def _resolve_repo_path(path):
+    if path is None:
+        return None
+    raw_path = os.path.expanduser(path)
+    candidates = []
+    if os.path.isabs(raw_path):
+        candidates.append(raw_path)
+    else:
+        candidates.append(os.path.abspath(raw_path))
+        candidates.append(os.path.join(PROJECT_ROOT, raw_path))
+        candidates.append(os.path.join(WORKSPACE_ROOT, raw_path))
+
+    resolved = None
+    for candidate in candidates:
+        candidate = os.path.abspath(candidate)
+        if os.path.isfile(candidate):
+            return candidate
+
+    return os.path.abspath(candidates[0])
+
+
+def _load_json_dict(path, label):
+    if path is None:
+        return None
+    resolved = _resolve_repo_path(path)
+    if not os.path.isfile(resolved):
+        raise FileNotFoundError(f"Missing {label}: {resolved}")
+    with open(resolved, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise TypeError(f"{label} must be a JSON object: {resolved}")
+    return data
+
+
+def _load_local_llava_config(config_dir):
+    try:
+        return AutoConfig.from_pretrained(config_dir)
+    except KeyError as exc:
+        config_path = os.path.join(config_dir, "config.json")
+        if not os.path.isfile(config_path):
+            raise
+        with open(config_path, "r", encoding="utf-8") as f:
+            config_dict = json.load(f)
+        if config_dict.get("model_type") == "llava_llama":
+            config_dict["model_type"] = "llava"
+            return LlavaConfig.from_dict(config_dict)
+        raise exc
+
+
+def _pad_tensor_to_shape(tensor, target_shape):
+    padded = torch.zeros(target_shape, dtype=tensor.dtype)
+    if tensor.ndim == 1 and len(target_shape) == 1:
+        length = min(tensor.shape[0], target_shape[0])
+        padded[:length] = tensor[:length]
+        return padded
+    if tensor.ndim == 2 and len(target_shape) == 2:
+        rows = min(tensor.shape[0], target_shape[0])
+        cols = min(tensor.shape[1], target_shape[1])
+        padded[:rows, :cols] = tensor[:rows, :cols]
+        return padded
+    return padded
+
+
+def _coerce_non_lora_state_dict(model, state_dict):
+    model_state = model.state_dict()
+    coerced = {}
+    dropped = []
+    legacy_prefixes = (
+        "image_anchors.",
+        "image_boundary.",
+        "role_image_prototypes.",
+    )
+    vector_keys = {
+        "expert_usage_prior",
+        "role_task_count",
+        "role_usage_prior",
+    }
+    matrix_keys = {
+        "task_role_membership",
+    }
+    spectral_prefixes = (
+        "spectral_image_anchors.",
+        "role_spectral_prototypes.",
+    )
+
+    for key, value in state_dict.items():
+        if any(key.startswith(prefix) for prefix in legacy_prefixes):
+            dropped.append((key, "legacy_state"))
+            continue
+
+        target = model_state.get(key)
+        if target is None:
+            coerced[key] = value
+            continue
+
+        if tuple(value.shape) == tuple(target.shape):
+            coerced[key] = value
+            continue
+
+        short_key = key.split(".")[-1]
+        if short_key in vector_keys and value.ndim == 1 and target.ndim == 1:
+            coerced[key] = _pad_tensor_to_shape(value, target.shape)
+            continue
+
+        if short_key in matrix_keys and value.ndim == 2 and target.ndim == 2:
+            coerced[key] = _pad_tensor_to_shape(value, target.shape)
+            continue
+
+        if any(key.startswith(prefix) for prefix in spectral_prefixes) and value.ndim == 2 and target.ndim == 2:
+            coerced[key] = _pad_tensor_to_shape(value, target.shape)
+            continue
+
+        dropped.append((key, f"shape_mismatch:{tuple(value.shape)}->{tuple(target.shape)}"))
+
+    return coerced, dropped
+
+
+def load_pretrained_model(
+    model_path,
+    model_base,
+    model_name,
+    load_8bit=False,
+    load_4bit=False,
+    device_map="auto",
+    device="cuda",
+    num_task=10,
+    text_tower=None,
+    routing_config_path=None,
+    stage1_band_schedule_path=None,
+    **kwargs,
+):
     kwargs = {"device_map": device_map, **kwargs}
     checkpoint_dir = os.path.abspath(os.path.expanduser(model_path))
     is_local_checkpoint_dir = os.path.isdir(checkpoint_dir)
@@ -75,7 +207,7 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
     )
     cfg_pretrained = None
     if is_local_checkpoint_dir and os.path.exists(os.path.join(checkpoint_dir, "config.json")):
-        cfg_pretrained = AutoConfig.from_pretrained(checkpoint_dir)
+        cfg_pretrained = _load_local_llava_config(checkpoint_dir)
     architectures = [str(x).lower() for x in getattr(cfg_pretrained, "architectures", [])] if cfg_pretrained is not None else []
     is_llava_model = (
         'llava' in model_name.lower()
@@ -106,7 +238,7 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
         if is_lora_checkpoint and model_base is None:
             warnings.warn('There is `lora` in model name but no `model_base` is provided. If you are loading a LoRA model, please provide the `model_base` argument. Detailed instruction: https://github.com/haotian-liu/LLaVA#launch-a-model-worker-lora-weights-unmerged.')
         if is_lora_checkpoint and model_base is not None:
-            lora_cfg_pretrained = cfg_pretrained if cfg_pretrained is not None else AutoConfig.from_pretrained(model_path)
+            lora_cfg_pretrained = cfg_pretrained if cfg_pretrained is not None else _load_local_llava_config(model_path)
             tokenizer = AutoTokenizer.from_pretrained(model_base, use_fast=False)
             print('Loading LLaVA from base model...')
             model = LlavaLlamaForCausalLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=lora_cfg_pretrained, **kwargs)
@@ -142,6 +274,13 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
             non_lora_trainables = {(k[11:] if k.startswith('base_model.') else k): v for k, v in non_lora_trainables.items()}
             if any(k.startswith('model.model.') for k in non_lora_trainables):
                 non_lora_trainables = {(k[6:] if k.startswith('model.') else k): v for k, v in non_lora_trainables.items()}
+            non_lora_trainables, dropped_non_lora = _coerce_non_lora_state_dict(model, non_lora_trainables)
+            if dropped_non_lora:
+                preview = ", ".join(f"{key}({reason})" for key, reason in dropped_non_lora[:8])
+                print(
+                    f"Dropped or reshaped incompatible non-LoRA tensors for eval compatibility: "
+                    f"{preview}"
+                )
             model.load_state_dict(non_lora_trainables, strict=False)
 
             from HiDESC.peft import PeftModel, TaskType, get_peft_model, HiDeMOELoraConfig, WEIGHTS_NAME, set_peft_model_state_dict
@@ -159,11 +298,11 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
                 if not os.path.isfile(os.path.join(model_path, 'configuration_mpt.py')):
                     shutil.copyfile(os.path.join(model_base, 'configuration_mpt.py'), os.path.join(model_path, 'configuration_mpt.py'))
                 tokenizer = AutoTokenizer.from_pretrained(model_base, use_fast=True)
-                cfg_pretrained = AutoConfig.from_pretrained(model_path, trust_remote_code=True)
+                cfg_pretrained = _load_local_llava_config(model_path)
                 model = LlavaMPTForCausalLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
             else:
                 tokenizer = AutoTokenizer.from_pretrained(model_base, use_fast=False)
-                cfg_pretrained = cfg_pretrained if cfg_pretrained is not None else AutoConfig.from_pretrained(model_path)
+                cfg_pretrained = cfg_pretrained if cfg_pretrained is not None else _load_local_llava_config(model_path)
                 model = LlavaLlamaForCausalLM.from_pretrained(model_base, low_cpu_mem_usage=True, config=cfg_pretrained, **kwargs)
 
             mm_projector_weights = torch.load(os.path.join(model_path, 'mm_projector.bin'), map_location='cpu')
@@ -230,6 +369,17 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
             if not text_tower_model.is_loaded:
                 text_tower_model.load_model()
             text_tower_model.to(device=device, dtype=torch.float16)
+        routing_config = _load_json_dict(routing_config_path, "routing config")
+        if routing_config is not None and hasattr(model, "configure_relation_routing"):
+            model.configure_relation_routing(**routing_config)
+        if stage1_band_schedule_path is not None:
+            if not hasattr(model, "set_stage1_band_schedule"):
+                raise RuntimeError(
+                    "Loaded model does not support stage1 band schedule injection."
+                )
+            model.set_stage1_band_schedule(
+                schedule_path=_resolve_repo_path(stage1_band_schedule_path)
+            )
 
     if hasattr(model.config, "max_sequence_length"):
         context_len = model.config.max_sequence_length

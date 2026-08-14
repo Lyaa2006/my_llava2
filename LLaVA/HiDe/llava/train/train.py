@@ -35,6 +35,7 @@ from llava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN
 from peft.utils import WEIGHTS_NAME, set_peft_model_state_dict
 from torch.utils.data import Dataset
 from llava.train.llava_trainer import LLaVATrainer
+from llava.utils import filter_samples_with_existing_images
 
 from llava import conversation as conversation_lib
 from llava.model import *
@@ -680,6 +681,20 @@ class LazySupervisedDataset(Dataset):
             list_data_dict = list_data_dict + list_memory_data_dict
             
             random.shuffle(list_data_dict)
+
+        if data_args.image_folder is not None:
+            original_len = len(list_data_dict)
+            list_data_dict, skipped_samples = filter_samples_with_existing_images(
+                list_data_dict,
+                data_args.image_folder,
+            )
+            if skipped_samples:
+                rank0_print(
+                    f"Skipping {len(skipped_samples)} bad image samples out of {original_len} "
+                    f"for image_folder={data_args.image_folder}"
+                )
+                for item in skipped_samples[:5]:
+                    rank0_print(f"  - {item['image']} ({item['reason']})")
 
         rank0_print("Formatting inputs...Skip in lazy mode")
         self.tokenizer = tokenizer

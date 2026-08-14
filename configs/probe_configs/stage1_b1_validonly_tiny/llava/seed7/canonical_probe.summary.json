@@ -1,0 +1,36 @@
+{
+  "num_records": 1789,
+  "summary": {
+    "prompt_cluster_counts": {
+      "caption": 208,
+      "comparison_reasoning": 144,
+      "counting": 284,
+      "general_vqa": 183,
+      "mcq_reasoning": 199,
+      "mcq_visual_qa": 235,
+      "ocr_reading": 92,
+      "recognition": 176,
+      "yes_no": 268
+    },
+    "dataset_group_counts": {
+      "acl": 488,
+      "dcl": 474,
+      "ucit": 827
+    },
+    "objective_label_counts": {
+      "objective_caption": 128,
+      "objective_mcq": 188,
+      "objective_qa": 199,
+      "objective_reasoning": 205,
+      "objective_recognition": 112,
+      "reasoning_easy": 144,
+      "reasoning_hard": 144,
+      "style_full_sentence": 223,
+      "style_label_only": 223,
+      "style_short_phrase": 223
+    }
+  },
+  "source_pool": "/mnt/lyaa/MCITlib/configs/probe_configs/stage1_b1_validonly_tiny/llava/seed7/native_probe_pool.jsonl",
+  "max_per_objective": 48,
+  "seed": 7
+}

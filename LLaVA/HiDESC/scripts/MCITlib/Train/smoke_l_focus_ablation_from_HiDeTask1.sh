@@ -115,11 +115,19 @@ common = {
     "save_steps": 1,
     "model_max_length": 1024,
     "dataloader_num_workers": 0,
-    "description_hidden_layer": -2,
     "description_max_tokens": 32,
     "description_focus_weight": focus_weight,
     "description_energy_weight": 1e-4,
     "description_energy_margin": 30.0,
+    "b1_low_layer": 15,
+    "b1_high_layer": 18,
+    "b2_low_layer": 29,
+    "b2_high_layer": 31,
+    "align_band_eta": 0.5,
+    "struct_band_eta": 0.35,
+    "struct_band_energy_rho": 1.0,
+    "loss_band_ema_gamma": 0.9,
+    "loss_band_position_eps": 0.05,
     "standard_ce_weight": 3.0,
 }
 
@@ -155,7 +163,7 @@ for tid in range(2, max_task_id + 1):
         "description_cache_model_source": cache_source,
         "description_cache_dir": os.path.join(
             prev_dir,
-            f"reference_description_cache_{cache_source}_{cache_tag}",
+            f"reference_description_cache_{cache_source}_{cache_tag}_expanded_text_v1",
         ),
     })
     with open(os.path.join(cfg_root, f"train_task{tid}.json"), "w") as f:

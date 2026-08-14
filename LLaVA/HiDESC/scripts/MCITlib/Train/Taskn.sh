@@ -76,23 +76,31 @@ PY
 }
 
 cache_meta_matches() {
-    python3 - "$1" "$2" "$3" "$4" "$5" "$6" <<'PY'
+    python3 - "$1" "$2" "$3" "$4" "$5" "$6" "$7" <<'PY'
 import json
 import os
 import sys
 
-cache_dir, data_path, prompt, hidden_layer, max_tokens, model_source = sys.argv[1:]
+cache_dir, data_path, prompt, b2_high_layer, max_tokens, model_source, cache_format = sys.argv[1:]
 meta_path = os.path.join(cache_dir, "meta.json")
 if not os.path.exists(meta_path):
     print("False")
     raise SystemExit
 with open(meta_path, "r") as f:
     meta = json.load(f)
+cache_format_value = meta.get("description_cache_format")
+legacy_cache_compatible = cache_format_value is None and meta.get("description_hidden_layer") is not None
+if cache_format_value is None and legacy_cache_compatible:
+    cache_format_value = cache_format
+cached_b2_high_layer = meta.get("b2_high_layer")
+if cached_b2_high_layer is None and meta.get("description_hidden_layer") == -2:
+    cached_b2_high_layer = 31
 ok = (
     meta.get("data_path") == data_path
     and meta.get("description_prompt") == prompt
     and meta.get("description_cache_model_source", "previous") == model_source
-    and str(meta.get("description_hidden_layer")) == str(hidden_layer)
+    and cache_format_value == cache_format
+    and str(cached_b2_high_layer) == str(b2_high_layer)
     and str(meta.get("description_max_tokens")) == str(max_tokens)
 )
 print("True" if ok else "False")
@@ -118,17 +126,25 @@ OUTPUT_DIR="${OUTPUT_DIR}${RUN_SUFFIX}"
 PREVIOUS=$(resolve_run_scoped_path "$PREVIOUS_RAW")
 
 DESCRIPTION_PROMPT=$(read_optional_config "$TRAIN_CONFIG" description_prompt "Describe the image using visual evidence: objects, attributes, shapes, colors, textures, scene context, visible text, and spatial relations.")
-DESCRIPTION_HIDDEN_LAYER=$(read_optional_config "$TRAIN_CONFIG" description_hidden_layer -2)
 DESCRIPTION_MAX_TOKENS=$(read_optional_config "$TRAIN_CONFIG" description_max_tokens 32)
 DESCRIPTION_FOCUS_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_focus_weight 0.2)
+DESCRIPTION_FOCUS_ALPHA=$(read_optional_config "$TRAIN_CONFIG" description_focus_alpha 0.5)
 DESCRIPTION_ENERGY_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_energy_weight 1e-4)
 DESCRIPTION_ENERGY_MARGIN=$(read_optional_config "$TRAIN_CONFIG" description_energy_margin 30.0)
-ENABLE_BOUNDARY_ALIGN=$(read_optional_config "$TRAIN_CONFIG" enable_boundary_align False)
-ALIGN_BOUNDARY_LAYER=$(read_optional_config "$TRAIN_CONFIG" align_boundary_layer 15)
+B1_LOW_LAYER=$(read_optional_config "$TRAIN_CONFIG" b1_low_layer 15)
+B1_HIGH_LAYER=$(read_optional_config "$TRAIN_CONFIG" b1_high_layer 18)
+B2_LOW_LAYER=$(read_optional_config "$TRAIN_CONFIG" b2_low_layer 29)
+B2_HIGH_LAYER=$(read_optional_config "$TRAIN_CONFIG" b2_high_layer 31)
+ALIGN_BAND_ETA=$(read_optional_config "$TRAIN_CONFIG" align_band_eta 0.5)
+STRUCT_BAND_ETA=$(read_optional_config "$TRAIN_CONFIG" struct_band_eta 0.35)
+STRUCT_BAND_ENERGY_RHO=$(read_optional_config "$TRAIN_CONFIG" struct_band_energy_rho 1.0)
+LOSS_BAND_EMA_GAMMA=$(read_optional_config "$TRAIN_CONFIG" loss_band_ema_gamma 0.9)
+LOSS_BAND_POSITION_EPS=$(read_optional_config "$TRAIN_CONFIG" loss_band_position_eps 0.05)
 ALIGN_LOSS_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" align_loss_weight 0.01)
 STANDARD_CE_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" standard_ce_weight 1.0)
 DESCRIPTION_CACHE_MODEL_SOURCE=$(read_optional_config "$TRAIN_CONFIG" description_cache_model_source "base")
 DESCRIPTION_CACHE_MAX_NEW_ENTRIES=$(read_optional_config "$TRAIN_CONFIG" description_cache_max_new_entries -1)
+DESCRIPTION_CACHE_FORMAT="expanded_text_v1"
 SAVE_STEPS=$(read_optional_config "$TRAIN_CONFIG" save_steps 50000)
 MODEL_MAX_LENGTH=$(read_optional_config "$TRAIN_CONFIG" model_max_length 2048)
 DATALOADER_NUM_WORKERS=$(read_optional_config "$TRAIN_CONFIG" dataloader_num_workers 4)
@@ -144,8 +160,9 @@ if [ "$PREVIOUS" != "$PREVIOUS_RAW" ]; then
 fi
 
 DEFAULT_CACHE_TAG=$(basename "$DATA_PATH" .json)
-DEFAULT_DESCRIPTION_CACHE_DIR="$PREVIOUS/reference_description_cache_${DESCRIPTION_CACHE_MODEL_SOURCE}_${DEFAULT_CACHE_TAG}"
+DEFAULT_DESCRIPTION_CACHE_DIR="$PREVIOUS/reference_description_cache_${DESCRIPTION_CACHE_MODEL_SOURCE}_${DEFAULT_CACHE_TAG}_${DESCRIPTION_CACHE_FORMAT}"
 DESCRIPTION_CACHE_DIR="${DESCRIPTION_CACHE_DIR:-$(read_optional_config "$TRAIN_CONFIG" description_cache_dir "$DEFAULT_DESCRIPTION_CACHE_DIR")}"
+quarantine_incomplete_cache_dir "$DESCRIPTION_CACHE_DIR" "Task${CUR_TASK} description cache"
 
 echo "Previous checkpoint: $PREVIOUS"
 echo "Output checkpoint: $OUTPUT_DIR"
@@ -161,9 +178,10 @@ if [ -d "$DESCRIPTION_CACHE_DIR" ]; then
         "$DESCRIPTION_CACHE_DIR" \
         "$DATA_PATH" \
         "$DESCRIPTION_PROMPT" \
-        "$DESCRIPTION_HIDDEN_LAYER" \
+        "$B2_HIGH_LAYER" \
         "$DESCRIPTION_MAX_TOKENS" \
-        "$DESCRIPTION_CACHE_MODEL_SOURCE")
+        "$DESCRIPTION_CACHE_MODEL_SOURCE" \
+        "$DESCRIPTION_CACHE_FORMAT")
     if [ "$EXISTING_CACHE_ENTRIES" -ge "$EXPECTED_CACHE_ENTRIES" ] && [ "$EXPECTED_CACHE_ENTRIES" -gt 0 ] && [ "$CACHE_META_READY" = "True" ]; then
         CACHE_READY=True
     elif [ "$EXISTING_CACHE_ENTRIES" -gt 0 ]; then
@@ -178,6 +196,7 @@ if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
     echo "Using DeepSpeed include=localhost:$VISIBLE_GPU_LIST"
     DEEPSPEED_GPU_ARGS=(--include "localhost:$VISIBLE_GPU_LIST")
     DEEPSPEED_ENV_PREFIX=(env -u CUDA_VISIBLE_DEVICES)
+    CACHE_GPU_SLOT="${VISIBLE_GPU_LIST%%,*}"
 else
     GPU_LIST=""
     for i in $(seq 0 $((GPU_NUM-1))); do
@@ -187,7 +206,11 @@ else
     echo "Using default local GPU slots=$GPU_LIST"
     DEEPSPEED_GPU_ARGS=(--include "localhost:$GPU_LIST")
     DEEPSPEED_ENV_PREFIX=()
+    CACHE_GPU_SLOT="0"
 fi
+
+echo "Using single-GPU description cache extraction on slot=$CACHE_GPU_SLOT"
+CACHE_DEEPSPEED_GPU_ARGS=(--include "localhost:$CACHE_GPU_SLOT")
 
 if [ -z "${MASTER_PORT:-}" ]; then
     MASTER_PORT=$(python3 - <<'PY'
@@ -251,7 +274,7 @@ done
 if [ "$CACHE_READY" != "True" ]; then
     echo "Supplementing description cache in $DESCRIPTION_CACHE_DIR"
     echo "Existing cache entries: ${EXISTING_CACHE_ENTRIES:-0}, expected dataset entries: $EXPECTED_CACHE_ENTRIES, max new entries this run: $DESCRIPTION_CACHE_MAX_NEW_ENTRIES"
-    "${DEEPSPEED_ENV_PREFIX[@]}" deepspeed "${DEEPSPEED_GPU_ARGS[@]}" --master_port "${MASTER_PORT:-9001}" llava/train/train_MOE.py \
+    "${DEEPSPEED_ENV_PREFIX[@]}" deepspeed "${CACHE_DEEPSPEED_GPU_ARGS[@]}" --master_port "${MASTER_PORT:-9001}" llava/train/train_MOE.py \
         --lora_enable True \
         --lora_r $RANK \
         --lora_alpha $((RANK * 2)) \
@@ -277,7 +300,7 @@ if [ "$CACHE_READY" != "True" ]; then
         --description_cache_dir "$DESCRIPTION_CACHE_DIR" \
         --description_cache_model_source "$DESCRIPTION_CACHE_MODEL_SOURCE" \
         --description_cache_max_new_entries $DESCRIPTION_CACHE_MAX_NEW_ENTRIES \
-        --description_hidden_layer $DESCRIPTION_HIDDEN_LAYER \
+        --b2_high_layer $B2_HIGH_LAYER \
         --description_max_tokens $DESCRIPTION_MAX_TOKENS \
         --extract_description_cache_only True
 fi
@@ -322,13 +345,20 @@ fi
     --description_prompt "$DESCRIPTION_PROMPT" \
     --description_cache_dir "$DESCRIPTION_CACHE_DIR" \
     --enable_description_cl True \
-    --description_hidden_layer $DESCRIPTION_HIDDEN_LAYER \
     --description_max_tokens $DESCRIPTION_MAX_TOKENS \
     --description_focus_weight $DESCRIPTION_FOCUS_WEIGHT \
+    --description_focus_alpha $DESCRIPTION_FOCUS_ALPHA \
     --description_energy_weight $DESCRIPTION_ENERGY_WEIGHT \
     --description_energy_margin $DESCRIPTION_ENERGY_MARGIN \
-    --enable_boundary_align $ENABLE_BOUNDARY_ALIGN \
-    --align_boundary_layer $ALIGN_BOUNDARY_LAYER \
+    --b1_low_layer $B1_LOW_LAYER \
+    --b1_high_layer $B1_HIGH_LAYER \
+    --b2_low_layer $B2_LOW_LAYER \
+    --b2_high_layer $B2_HIGH_LAYER \
+    --align_band_eta $ALIGN_BAND_ETA \
+    --struct_band_eta $STRUCT_BAND_ETA \
+    --struct_band_energy_rho $STRUCT_BAND_ENERGY_RHO \
+    --loss_band_ema_gamma $LOSS_BAND_EMA_GAMMA \
+    --loss_band_position_eps $LOSS_BAND_POSITION_EPS \
     --align_loss_weight $ALIGN_LOSS_WEIGHT \
     --standard_ce_weight $STANDARD_CE_WEIGHT \
     --report_to none \

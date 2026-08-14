@@ -1,0 +1,62 @@
+{
+  "num_reports": 3,
+  "reports": [
+    {
+      "path": "docs/stage1_b1_band_large_20260811/llava/seed13/canonical/leave_one_dataset__acl/boundary_report.json",
+      "model": "llava",
+      "dataset": "acl",
+      "b1_low": 16,
+      "b1_high": 16,
+      "b2_low": 20,
+      "b2_high": 20
+    },
+    {
+      "path": "docs/stage1_b1_band_large_20260811/llava/seed13/canonical/leave_one_dataset__dcl/boundary_report.json",
+      "model": "llava",
+      "dataset": "dcl",
+      "b1_low": 10,
+      "b1_high": 10,
+      "b2_low": 15,
+      "b2_high": 15
+    },
+    {
+      "path": "docs/stage1_b1_band_large_20260811/llava/seed13/canonical/leave_one_dataset__ucit/boundary_report.json",
+      "model": "llava",
+      "dataset": "ucit",
+      "b1_low": 20,
+      "b1_high": 20,
+      "b2_low": 28,
+      "b2_high": 28
+    }
+  ],
+  "aggregate": {
+    "b1_low": {
+      "mean": 15.333333333333334,
+      "median": 16.0,
+      "std": 4.109609335312651,
+      "min": 10.0,
+      "max": 20.0
+    },
+    "b1_high": {
+      "mean": 15.333333333333334,
+      "median": 16.0,
+      "std": 4.109609335312651,
+      "min": 10.0,
+      "max": 20.0
+    },
+    "b2_low": {
+      "mean": 21.0,
+      "median": 20.0,
+      "std": 5.354126134736337,
+      "min": 15.0,
+      "max": 28.0
+    },
+    "b2_high": {
+      "mean": 21.0,
+      "median": 20.0,
+      "std": 5.354126134736337,
+      "min": 15.0,
+      "max": 28.0
+    }
+  }
+}

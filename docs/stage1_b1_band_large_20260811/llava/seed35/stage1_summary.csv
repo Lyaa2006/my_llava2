@@ -1,0 +1,4 @@
+path,model,dataset,b1_low,b1_high,b2_low,b2_high
+/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed35/canonical/leave_one_dataset__acl/boundary_report.json,llava,acl,18,18,28,28
+/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed35/canonical/leave_one_dataset__dcl/boundary_report.json,llava,dcl,19,19,23,23
+/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed35/canonical/leave_one_dataset__ucit/boundary_report.json,llava,ucit,14,14,28,28

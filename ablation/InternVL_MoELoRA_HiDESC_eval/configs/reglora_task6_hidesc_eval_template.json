@@ -1,0 +1,10 @@
+{
+  "gpu_num": 4,
+  "stage": "RegLoRA-task6-HiDESC-eval",
+  "model_path": "/mnt/lyaa/MCITlib/ablation/InternVL_MoELoRA_HiDESC_eval/results/UCIT/reglora_task6_hidesc_prep/Task6_internvl_lora_hidesc_ready",
+  "result_path": "/mnt/lyaa/MCITlib/ablation/InternVL_MoELoRA_HiDESC_eval/results/UCIT/reglora_task6_hidesc_eval",
+  "text_tower": "/mnt/lyaa/my_llava/clip-vit-large-patch14-336",
+  "num_task": 6,
+  "routing_config_path": "configs/routing_configs/HiDESC/ucit_role_3way_fft_soft.json",
+  "stage1_band_schedule_path": "configs/routing_configs/HiDESC/internvl_stage1_band_eval_schedule.json"
+}

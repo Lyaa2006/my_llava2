@@ -1,0 +1,4 @@
+path,model,dataset,b1_low,b1_high,b2_low,b2_high
+/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/internvl/seed7/canonical/leave_one_dataset__acl/boundary_report.json,internvl,acl,14,14,18,18
+/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/internvl/seed7/canonical/leave_one_dataset__dcl/boundary_report.json,internvl,dcl,10,10,14,14
+/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/internvl/seed7/canonical/leave_one_dataset__ucit/boundary_report.json,internvl,ucit,14,14,18,18

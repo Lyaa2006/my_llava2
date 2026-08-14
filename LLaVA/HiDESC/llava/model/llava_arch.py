@@ -14,6 +14,8 @@
 
 
 from abc import ABC, abstractmethod
+import json
+import os
 
 import torch
 import torch.nn as nn
@@ -147,9 +149,12 @@ class LlavaMetaForCausalLM(ABC):
             "relation_routing_config",
             {
                 "use_spectral_image_routing": True,
-                "use_spectral_role_prototype": False,
+                "use_spectral_role_prototype": True,
                 "role_reset_on_strategy_change": False,
                 "use_text_anchor_routing": True,
+                "use_stage1_band_schedule_eval": True,
+                "eval_use_role_spectral_prototype": True,
+                "eval_disable_role_image_prototype": True,
                 "spectral_cutoff": 0.33,
                 "spectral_low_bins": 4,
                 "spectral_high_bins": 4,
@@ -192,6 +197,91 @@ class LlavaMetaForCausalLM(ABC):
                 "routing_late_top_k": 2,
             },
         )
+
+    def load_stage1_band_schedule(self, schedule_path):
+        if schedule_path is None:
+            return None
+        schedule_path = os.path.abspath(os.path.expanduser(schedule_path))
+        with open(schedule_path, "r", encoding="utf-8") as f:
+            schedule = json.load(f)
+        if not isinstance(schedule, dict):
+            raise TypeError(
+                f"Stage1 band schedule must be a JSON object, got {type(schedule)!r}"
+            )
+        return schedule
+
+    def set_stage1_band_schedule(self, schedule=None, schedule_path=None):
+        if schedule is not None and schedule_path is not None:
+            raise ValueError("Provide either schedule or schedule_path, not both.")
+        if schedule_path is not None:
+            schedule = self.load_stage1_band_schedule(schedule_path)
+        self.stage1_band_schedule = schedule
+        if schedule_path is not None:
+            self._get_relation_config()["stage1_band_schedule_path"] = schedule_path
+
+    def _get_stage1_band_schedule(self):
+        if not bool(self._get_relation_config().get("use_stage1_band_schedule_eval", True)):
+            return None
+        schedule = getattr(self, "stage1_band_schedule", None)
+        if isinstance(schedule, dict):
+            return schedule
+        schedule_path = self._get_relation_config().get("stage1_band_schedule_path")
+        if schedule_path:
+            schedule = self.load_stage1_band_schedule(schedule_path)
+            self.stage1_band_schedule = schedule
+            return schedule
+        return None
+
+    def _get_stage1_band_region(self, layer_idx):
+        schedule = self._get_stage1_band_schedule()
+        if not schedule:
+            return None
+        layer_no = int(layer_idx) + 1
+        region_ranges = (
+            ("early", schedule.get("early_core")),
+            ("b1", schedule.get("b1_band")),
+            ("middle", schedule.get("middle_core")),
+            ("b2", schedule.get("b2_band")),
+            ("late", schedule.get("late_core")),
+        )
+        for region_name, region_range in region_ranges:
+            if (
+                isinstance(region_range, (list, tuple))
+                and len(region_range) == 2
+                and int(region_range[0]) <= layer_no <= int(region_range[1])
+            ):
+                return region_name
+        return None
+
+    def _get_stage1_band_core(self, layer_idx):
+        schedule = self._get_stage1_band_schedule()
+        if not schedule:
+            return None
+        layer_no = int(layer_idx) + 1
+        core_ranges = (
+            ("b1_core", schedule.get("b1_core")),
+            ("b2_core", schedule.get("b2_core")),
+        )
+        for core_name, core_range in core_ranges:
+            if (
+                isinstance(core_range, (list, tuple))
+                and len(core_range) == 2
+                and int(core_range[0]) <= layer_no <= int(core_range[1])
+            ):
+                return core_name
+        return None
+
+    def _get_stage1_band_alpha(self, layer_idx):
+        schedule = self._get_stage1_band_schedule()
+        if not schedule:
+            return None
+        alpha_by_layer = schedule.get("alpha_by_layer")
+        if not isinstance(alpha_by_layer, dict):
+            return None
+        layer_no = str(int(layer_idx) + 1)
+        if layer_no not in alpha_by_layer:
+            return None
+        return float(alpha_by_layer[layer_no])
 
     def _build_radial_frequency_masks(self, height, width, device):
         config = self._get_relation_config()
@@ -256,13 +346,13 @@ class LlavaMetaForCausalLM(ABC):
                 f"{tuple(projected_patch_features.shape)}"
             )
         batch_size, num_patches, feature_dim = projected_patch_features.shape
-        vision_config = self.get_vision_tower().config
-        height = int(vision_config.image_size) // int(vision_config.patch_size)
-        width = height
+        grid_size = int(round(num_patches ** 0.5))
+        height = grid_size
+        width = grid_size
         if num_patches != height * width:
             raise ValueError(
-                "Spectral routing requires a square CLIP patch grid: "
-                f"got N={num_patches}, expected {height}x{width}."
+                "Spectral routing requires a square patch grid: "
+                f"got N={num_patches}."
             )
 
         patch_grid = projected_patch_features.reshape(
@@ -369,7 +459,7 @@ class LlavaMetaForCausalLM(ABC):
             requested_experts = int(getattr(self, "expert_num", 0))
         requested_experts = min(
             max(int(requested_experts), 0),
-            len(getattr(self, "image_anchors", [])),
+            len(getattr(self, "spectral_image_anchors", [])),
             int(getattr(self, "max_task_slots", 0)),
         )
         active_experts = 0
@@ -418,7 +508,6 @@ class LlavaMetaForCausalLM(ABC):
             torch.nan_to_num(self.task_role_membership.detach(), nan=0.0, posinf=0.0, neginf=0.0)
         )
         for prototype_bank in (
-            self.role_image_prototypes,
             self.role_spectral_prototypes,
             self.role_text_prototypes,
         ):
@@ -446,7 +535,6 @@ class LlavaMetaForCausalLM(ABC):
 
     def _reset_role_memory(self):
         for prototype_bank in (
-            self.role_image_prototypes,
             self.role_spectral_prototypes,
             self.role_text_prototypes,
         ):
@@ -460,7 +548,6 @@ class LlavaMetaForCausalLM(ABC):
     def _max_supported_role_slots(self):
         return min(
             int(getattr(self, "max_role_slots", 0)),
-            len(self.role_image_prototypes),
             len(self.role_spectral_prototypes),
             len(self.role_text_prototypes),
             int(self.role_task_count.shape[0]),
@@ -821,12 +908,19 @@ class LlavaMetaForCausalLM(ABC):
             dim=0,
         )
         config = self._get_relation_config()
+        if bool(config.get("eval_use_role_spectral_prototype", True)):
+            config["use_spectral_role_prototype"] = True
         prototype_scores = torch.zeros(active_roles, device=device, dtype=torch.float32)
         if bool(config.get("use_text_anchor_routing", True)):
             prototype_scores = prototype_scores + float(
                 config.get("text_weight", config.get("routing_text_weight", 0.5))
             ) * torch.matmul(role_text_bank, text_anchor.to(device))
         if bool(config.get("use_spectral_role_prototype", False)):
+            if not self._spectral_role_bank_available(active_roles):
+                raise RuntimeError(
+                    "HiDESC eval requires populated role_spectral_prototypes, "
+                    "but the spectral role bank is incomplete. Rebuild spectral role memory first."
+                )
             role_spectral_bank = torch.stack(
                 [
                     self._safe_normalize(
@@ -884,6 +978,30 @@ class LlavaMetaForCausalLM(ABC):
         if return_details:
             return masked_role_scores, prototype_scores, torch.stack(member_scores, dim=0)
         return masked_role_scores
+
+    def _spectral_role_bank_available(self, active_roles):
+        if active_roles <= 0:
+            return False
+        prototypes = torch.stack(
+            [
+                self.role_spectral_prototypes[idx].detach().float().reshape(-1)
+                for idx in range(active_roles)
+            ],
+            dim=0,
+        )
+        sizes = torch.nan_to_num(
+            self.role_task_count[:active_roles].detach().float(),
+            nan=0.0,
+            posinf=0.0,
+            neginf=0.0,
+        )
+        prototype_norms = torch.linalg.norm(prototypes, dim=-1)
+        return bool(
+            torch.isfinite(prototype_norms).all()
+            and torch.isfinite(sizes).all()
+            and torch.all(sizes > 0)
+            and torch.all(prototype_norms > 0)
+        )
 
     def _build_role_weight_plan(self, active_experts, expert_logits, image_anchor, text_anchor, use_all_roles=False, role_pool_key="role_top_k"):
         role_scores = self._score_roles(
@@ -1115,7 +1233,14 @@ class LlavaMetaForCausalLM(ABC):
         if active_experts <= 1 or task_scores.numel() <= 1:
             identity = torch.zeros(active_experts, device=device, dtype=torch.float32)
             identity[0] = 1.0
-            return {"early": identity, "middle": identity, "late": identity, "candidate_experts": [0]}
+            per_layer = [identity for _ in range(len(self.model.layers))]
+            return {
+                "early_basis": identity,
+                "middle_basis": identity,
+                "late_basis": identity,
+                "per_layer": per_layer,
+                "candidate_experts": [0],
+            }
 
         role_weights, _ = self._build_role_weight_plan(
             active_experts,
@@ -1129,10 +1254,39 @@ class LlavaMetaForCausalLM(ABC):
         top_k = max(1, min(int(self._get_relation_config()["routing_late_top_k"]), active_experts))
         late = self._build_sparse_relation_weights(task_scores, top_k)
         candidate_experts = torch.topk(late, k=top_k).indices.tolist()
+        per_layer = []
+        for layer_idx in range(len(self.model.layers)):
+            region = self._get_stage1_band_region(layer_idx)
+            alpha = self._get_stage1_band_alpha(layer_idx)
+            if region == "early":
+                layer_weights = early
+            elif region == "middle":
+                layer_weights = middle
+            elif region == "late":
+                layer_weights = late
+            elif region == "b1":
+                alpha = 0.5 if alpha is None else alpha
+                layer_weights = self._normalize_route_weights(
+                    (1.0 - alpha) * early + alpha * middle
+                )
+            elif region == "b2":
+                alpha = 0.5 if alpha is None else alpha
+                layer_weights = self._normalize_route_weights(
+                    (1.0 - alpha) * middle + alpha * late
+                )
+            else:
+                stage = self._get_layer_stage(layer_idx, len(self.model.layers))
+                layer_weights = {
+                    "early": early,
+                    "middle": middle,
+                    "late": late,
+                }[stage]
+            per_layer.append(layer_weights)
         return {
-            "early": early,
-            "middle": middle,
-            "late": late,
+            "early_basis": early,
+            "middle_basis": middle,
+            "late_basis": late,
+            "per_layer": per_layer,
             "candidate_experts": candidate_experts,
         }
 
@@ -1154,8 +1308,15 @@ class LlavaMetaForCausalLM(ABC):
     def _apply_relation_weights_to_experts(self, route_plan):
         proj_names = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
         for layer_idx, layer in enumerate(self.model.layers):
-            stage = self._get_layer_stage(layer_idx, len(self.model.layers))
-            active_weights = route_plan[stage]
+            if "per_layer" in route_plan:
+                active_weights = route_plan["per_layer"][layer_idx]
+                stage = self._get_stage1_band_region(layer_idx) or self._get_layer_stage(
+                    layer_idx,
+                    len(self.model.layers),
+                )
+            else:
+                stage = self._get_layer_stage(layer_idx, len(self.model.layers))
+                active_weights = route_plan[stage]
             for proj_name in proj_names:
                 if proj_name in ["q_proj", "k_proj", "v_proj", "o_proj"]:
                     proj_layer = getattr(layer.self_attn, proj_name)
@@ -1384,10 +1545,6 @@ class LlavaMetaForCausalLM(ABC):
                 projected_patch_features
             )
 
-        if isinstance(image_features, torch.Tensor):
-            assert image_features.shape[1] == 576, (
-                "vision tower not a withprojection version."
-            )
         text_tower = self.get_text_tower()
 
         # with torch.no_grad():
@@ -1410,20 +1567,21 @@ class LlavaMetaForCausalLM(ABC):
         # text_guide_features: bs, 768
         text_guide_features = text_tower(clip_text_inputs)
 
-        if self.training and not getattr(self, "disable_anchor_update", False):
-            current_text_features = text_guide_features  # [batch_size, feature_dim]
-            task_id = self.cur_task
+        if self.training or getattr(self, "cache_extraction_mode", False):
+            if not getattr(self, "disable_anchor_update", False):
+                current_text_features = text_guide_features  # [batch_size, feature_dim]
+                task_id = self.cur_task
 
-            self._update_running_prototype(
-                self.text_anchors[task_id],
-                self.text_boundary[task_id],
-                current_text_features,
-            )
-            self._update_running_prototype(
-                self.spectral_image_anchors[task_id],
-                self.spectral_image_boundary[task_id],
-                image_spectral_features,
-            )
+                self._update_running_prototype(
+                    self.text_anchors[task_id],
+                    self.text_boundary[task_id],
+                    current_text_features,
+                )
+                self._update_running_prototype(
+                    self.spectral_image_anchors[task_id],
+                    self.spectral_image_boundary[task_id],
+                    image_spectral_features,
+                )
         else:
             active_experts = self._get_available_eval_expert_count(
                 requested_experts=int(self.expert_num)
@@ -1431,7 +1589,7 @@ class LlavaMetaForCausalLM(ABC):
             if active_experts <= 0:
                 raise RuntimeError(
                     "No trained experts with the required eval anchors are available. "
-                    "Check text/image/spectral anchor boundaries in the loaded checkpoint."
+                    "Check text/spectral anchor boundaries in the loaded checkpoint."
                 )
             self.ensure_role_bank_initialized(active_experts)
             image_summary = self._summarize_guide_features(image_spectral_features)
