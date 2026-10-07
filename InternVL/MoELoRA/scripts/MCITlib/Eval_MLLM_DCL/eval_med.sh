@@ -1,11 +1,27 @@
 #!/bin/bash
 
+set -euo pipefail
+
 MODEL_CONFIG=$1
 DATA_CONFIG=$2
 TRAIN_CONFIG=$3
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+cd "$PROJECT_ROOT"
+
+PYTHON_BIN="${PYTHON_BIN:-/home/lyaa/miniconda3/envs/MCITlib_copy/bin/python}"
+if [[ ! -x "$PYTHON_BIN" ]]; then
+    PYTHON_BIN="$(command -v python3)"
+fi
+
 read_config() {
-    python3 -c "import json; print(json.load(open('$1'))['$2'])"
+    "$PYTHON_BIN" - "$1" "$2" <<'PY'
+import json, sys
+path, key = sys.argv[1:]
+with open(path, encoding="utf-8") as f:
+    print(json.load(f)[key])
+PY
 }
 
 TASK="Med"
@@ -29,16 +45,17 @@ IFS=',' read -ra GPULIST <<< "$CUDA_VISIBLE_DEVICES"
 CHUNKS=${#GPULIST[@]}
 
 RESULT_DIR="$RESULT_PATH/$TASK"
+mkdir -p "$RESULT_DIR/$STAGE"
 
 for IDX in $(seq 0 $((CHUNKS-1))); do
-    CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} python -m llava.eval.CoIN.model_pvqa \
-        --model-path $MODELPATH \
-        --model-base $MODELBASE \
-        --question-file $DATA_PATH \
-        --image-folder $IMAGE \
-        --answers-file $RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl \
-        --num-chunks $CHUNKS \
-        --chunk-idx $IDX \
+    CUDA_VISIBLE_DEVICES=${GPULIST[$IDX]} "$PYTHON_BIN" -m llava.eval.CoIN.model_pvqa \
+        --model-path "$MODELPATH" \
+        --model-base "$MODELBASE" \
+        --question-file "$DATA_PATH" \
+        --image-folder "$IMAGE" \
+        --answers-file "$RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl" \
+        --num-chunks "$CHUNKS" \
+        --chunk-idx "$IDX" \
         --temperature 0 \
         --conv-mode vicuna_v1 &
 done
@@ -55,10 +72,10 @@ for IDX in $(seq 0 $((CHUNKS-1))); do
     cat $RESULT_DIR/$STAGE/${CHUNKS}_${IDX}.jsonl >> "$output_file"
 done
 
-python -m llava.eval.CoIN.eval_pvqa \
-    --annotation-file $DATA_PATH \
-    --result-file $output_file \
-    --output-dir $RESULT_DIR/$STAGE \
+"$PYTHON_BIN" -m llava.eval.CoIN.eval_pvqa \
+    --annotation-file "$DATA_PATH" \
+    --result-file "$output_file" \
+    --output-dir "$RESULT_DIR/$STAGE" \
 
 # /mnt/cache/guohaiyang/miniconda3/envs/coin/bin/python -m llava.eval.LLaVA.CoIN.create_prompt \
 #     --rule ./ETrain/Eval/LLaVA/CoIN/rule.json \

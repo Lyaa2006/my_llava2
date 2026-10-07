@@ -27,12 +27,48 @@ def get_chunk(lst, n, k):
     return chunks[k]
 
 
+def force_single_expert(model, expert_index):
+    if expert_index < 0:
+        raise ValueError("HIDE_FORCE_EXPERT must be non-negative")
+
+    linear_count = 0
+    for module in model.modules():
+        if module.__class__.__name__ != "HiDeMOELoraLinear":
+            continue
+        if expert_index >= int(module.expert_num):
+            raise ValueError(
+                f"HIDE_FORCE_EXPERT={expert_index} is outside expert_num={module.expert_num}"
+            )
+        module.cur_task = expert_index
+        module.training = True
+        adapter_name = module.active_adapter
+        for container_name in ("lora_A", "lora_B"):
+            container = getattr(module, container_name)
+            block = container[adapter_name]
+            block.cur_task = expert_index
+            block.training = True
+        weights = [0.0] * int(module.expert_num)
+        weights[expert_index] = 1.0
+        module.expert_weight = weights
+        linear_count += 1
+
+    if linear_count == 0:
+        raise RuntimeError("No HiDeMOELoraLinear modules found after loading checkpoint")
+    model.cur_task = expert_index
+    return linear_count
+
+
 def eval_model(args):
     # Model
     disable_torch_init()
     model_path = os.path.expanduser(args.model_path)
     model_name = get_model_name_from_path(model_path)
     tokenizer, model, image_processor, context_len = load_pretrained_model(model_path, args.model_base, model_name, num_task=args.num_task, text_tower=args.text_tower)
+    force_expert = os.environ.get("HIDE_FORCE_EXPERT", "").strip()
+    if force_expert:
+        expert_index = int(force_expert)
+        count = force_single_expert(model, expert_index)
+        print(f"[HIDE_FORCE_EXPERT] expert={expert_index} lora_layers={count}", flush=True)
 
     with open(os.path.expanduser(args.question_file), "r") as f:
         questions = json.load(f)
@@ -83,8 +119,9 @@ def eval_model(args):
                 top_p=args.top_p,
                 num_beams=args.num_beams,
                 # no_repeat_ngram_size=3,
-                max_new_tokens=256,
-                use_cache=True)
+                max_new_tokens=args.max_new_tokens,
+                use_cache=True,
+                stopping_criteria=[stopping_criteria])
 
         input_token_len = input_ids.shape[1]
         n_diff_input_output = (input_ids != output_ids[:, :input_token_len]).sum().item()
@@ -119,6 +156,7 @@ if __name__ == "__main__":
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
+    parser.add_argument("--max-new-tokens", type=int, default=64)
     parser.add_argument("--text-tower", type=str)
     parser.add_argument("--num-task", type=int, default=0)
     args = parser.parse_args()

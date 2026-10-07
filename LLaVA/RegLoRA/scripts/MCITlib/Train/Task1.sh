@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 
 ################## VICUNA ##################
@@ -13,8 +14,16 @@ TRAIN_CONFIG=$3
 read_config() {
     python3 -c "import json; print(json.load(open('$1'))['$2'])"
 }
+read_config_or() {
+    python3 - "$1" "$2" "$3" <<'PY'
+import json, sys
+cfg = json.load(open(sys.argv[1]))
+print(cfg.get(sys.argv[2], sys.argv[3]))
+PY
+}
 
 GPU_NUM=$(read_config "$TRAIN_CONFIG" gpu_num)
+MASTER_PORT="${MASTER_PORT:-9001}"
 RANK=$(read_config "$TRAIN_CONFIG" rank)
 MODEL_NAME=$(read_config "$MODEL_CONFIG" model_name)
 MM_PROJECTOR=$(read_config "$MODEL_CONFIG" mm_projector)
@@ -26,19 +35,28 @@ EPOCH=$(read_config "$TRAIN_CONFIG" epoch)
 BATCH_SIZE=$(read_config "$TRAIN_CONFIG" batch_size)
 GRAD_ACC=$(read_config "$TRAIN_CONFIG" grad_acc)
 LR=$(read_config "$TRAIN_CONFIG" lr)
+MAX_STEPS=$(read_config_or "$TRAIN_CONFIG" max_steps -1)
+SAVE_STEPS=$(read_config_or "$TRAIN_CONFIG" save_steps 50000)
+MODEL_MAX_LENGTH=$(read_config_or "$TRAIN_CONFIG" model_max_length 2048)
+DATALOADER_WORKERS=$(read_config_or "$TRAIN_CONFIG" dataloader_num_workers 4)
 
-GPU_LIST=""
-for i in $(seq 0 $((GPU_NUM-1))); do
-    GPU_LIST+="$i,"
-done
-GPU_LIST=${GPU_LIST%,}
+if [[ -n "${GPU_IDS:-}" ]]; then
+    DS_INCLUDE_ARGS=(--include "localhost:$GPU_IDS")
+else
+    GPU_LIST=""
+    for i in $(seq 0 $((GPU_NUM-1))); do
+        GPU_LIST+="$i,"
+    done
+    GPU_LIST=${GPU_LIST%,}
+    DS_INCLUDE_ARGS=(--include "localhost:$GPU_LIST")
+fi
 
 ################## LLaMA-2 ##################
 # PROMPT_VERSION="llava_llama_2"
 # MODEL_VERSION="Llama-2-7b-chat-hf"
 ################## LLaMA-2 ##################
 
-deepspeed --include localhost:$GPU_LIST --master_port 9001 llava/train/train_mem.py \
+deepspeed "${DS_INCLUDE_ARGS[@]}" --master_port "$MASTER_PORT" llava/train/train_mem.py \
     --lora_enable True --lora_r $RANK --lora_alpha $((RANK * 2)) --mm_projector_lr 2e-5 \
     --deepspeed ./scripts/zero2.json \
     --model_name_or_path $MODEL_NAME \
@@ -61,18 +79,19 @@ deepspeed --include localhost:$GPU_LIST --master_port 9001 llava/train/train_mem
     --gradient_accumulation_steps $GRAD_ACC \
     --evaluation_strategy "no" \
     --save_strategy "steps" \
-    --save_steps 50000 \
+    --save_steps $SAVE_STEPS \
     --learning_rate $LR \
     --weight_decay 0. \
     --warmup_ratio 0.03 \
     --lr_scheduler_type "cosine" \
     --logging_steps 1 \
     --tf32 True \
-    --model_max_length 2048 \
+    --model_max_length $MODEL_MAX_LENGTH \
     --gradient_checkpointing True \
-    --dataloader_num_workers 4 \
+    --dataloader_num_workers $DATALOADER_WORKERS \
     --lazy_preprocess True \
-    --report_to none
+    --report_to none \
+    $(if [[ "$MAX_STEPS" != "-1" ]]; then echo "--max_steps $MAX_STEPS"; fi)
 
 
 SAVE_PATH="${OUTPUT_DIR}_merged"

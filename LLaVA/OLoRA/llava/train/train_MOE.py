@@ -15,6 +15,7 @@
 #    limitations under the License.
 
 import os
+import sys
 import copy
 from dataclasses import dataclass, field
 import json, deepspeed
@@ -844,8 +845,17 @@ def train():
                 **bnb_model_from_pretrained_args
             )
         else:
+            config = transformers.AutoConfig.from_pretrained(
+                model_args.model_name_or_path,
+                cache_dir=training_args.cache_dir,
+                trust_remote_code=True,
+            )
+            # The command-line vision tower must override the stale model
+            # config entry (which may still contain the public HF identifier).
+            config.mm_vision_tower = model_args.vision_tower
             model = LlavaLlamaForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
+                config=config,
                 cache_dir=training_args.cache_dir,
                 **bnb_model_from_pretrained_args,
             )

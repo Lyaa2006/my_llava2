@@ -83,7 +83,22 @@ def eval_model(args):
     questions = get_chunk(questions, args.num_chunks, args.chunk_idx)
     answers_file = os.path.expanduser(args.answers_file)
     os.makedirs(os.path.dirname(answers_file), exist_ok=True)
-    ans_file = open(answers_file, "w")
+    completed_ids = set()
+    if args.resume and os.path.exists(answers_file):
+        with open(answers_file, "r", encoding="utf-8") as existing_answers:
+            for line_number, line in enumerate(existing_answers, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    completed_ids.add(str(json.loads(line)["question_id"]))
+                except (json.JSONDecodeError, KeyError) as exc:
+                    raise RuntimeError(
+                        f"Cannot resume from malformed answer at {answers_file}:{line_number}"
+                    ) from exc
+        questions = [line for line in questions if str(line["question_id"]) not in completed_ids]
+        print(f"Resuming: keeping {len(completed_ids)} answers; generating {len(questions)} remaining samples")
+    ans_file = open(answers_file, "a" if args.resume else "w", encoding="utf-8")
 
     if 'plain' in model_name and 'finetune' not in model_name.lower() and 'mmtag' not in args.conv_mode:
         args.conv_mode = args.conv_mode + '_mmtag'
@@ -98,7 +113,9 @@ def eval_model(args):
         input_ids = input_ids.to(device='cuda', non_blocking=True)
         conv = conv_templates[args.conv_mode].copy()
         stop_str =conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
-        keywords = [stop_str] # [</s>]
+        keywords = [stop_str]
+        if args.stop_on_hash:
+            keywords.append("#")
         stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
         
         with torch.inference_mode():
@@ -127,7 +144,7 @@ def eval_model(args):
                                    "answer_id": ans_id,
                                    "model_id": model_name,
                                    "metadata": {}}) + "\n")
-        # ans_file.flush()
+        ans_file.flush()
     ans_file.close()
 
 if __name__ == "__main__":
@@ -144,6 +161,10 @@ if __name__ == "__main__":
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
+    parser.add_argument("--stop-on-hash", action="store_true",
+                        help="Stop generation as soon as a # marker is emitted.")
+    parser.add_argument("--resume", action="store_true",
+                        help="Append answers and skip question_ids already present in --answers-file.")
     args = parser.parse_args()
 
     eval_model(args)

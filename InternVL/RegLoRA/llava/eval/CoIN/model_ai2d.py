@@ -97,7 +97,9 @@ def eval_model(args):
         input_ids = input_ids.to(device='cuda', non_blocking=True)
         conv = conv_templates[args.conv_mode].copy()
         stop_str =conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
-        keywords = [stop_str] # [</s>]
+        keywords = [stop_str]
+        if args.stop_on_hash:
+            keywords.append("#")
         stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
         
         with torch.inference_mode():
@@ -143,6 +145,8 @@ if __name__ == "__main__":
     parser.add_argument("--top_p", type=float, default=None)
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--max_new_tokens", type=int, default=128)
+    parser.add_argument("--stop-on-hash", action="store_true",
+                        help="Stop generation as soon as a # marker is emitted.")
     args = parser.parse_args()
 
     eval_model(args)

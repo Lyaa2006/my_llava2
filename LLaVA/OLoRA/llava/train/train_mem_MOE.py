@@ -3,11 +3,12 @@
 # Make it more memory efficient by monkey patching the LLaMA model with FlashAttn.
 
 # Need to call this before importing transformers.
+import os
 import sys
 sys.path.append('/your_path/MCITlib_v3/LLaVA/OLoRA')
-from llava.train.llama_flash_attn_monkey_patch import replace_llama_attn_with_flash_attn
-
-replace_llama_attn_with_flash_attn()
+if os.environ.get("DISABLE_FLASH_ATTN", "0") != "1":
+    from llava.train.llama_flash_attn_monkey_patch import replace_llama_attn_with_flash_attn
+    replace_llama_attn_with_flash_attn()
 
 from llava.train.train_MOE import train
 

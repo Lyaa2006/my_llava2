@@ -337,6 +337,8 @@ class LlamaAttention(nn.Module):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        packed_cu_seqlens: Optional[torch.Tensor] = None,
+        packed_max_seqlen: Optional[int] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         if "padding_mask" in kwargs:
@@ -457,6 +459,8 @@ class LlamaFlashAttention2(LlamaAttention):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        packed_cu_seqlens: Optional[torch.Tensor] = None,
+        packed_max_seqlen: Optional[int] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         # LlamaFlashAttention2 attention does not support output_attentions
@@ -528,7 +532,14 @@ class LlamaFlashAttention2(LlamaAttention):
             value_states = value_states.to(target_dtype)
 
         attn_output = self._flash_attention_forward(
-            query_states, key_states, value_states, attention_mask, q_len, dropout=dropout_rate
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            q_len,
+            dropout=dropout_rate,
+            packed_cu_seqlens=packed_cu_seqlens,
+            packed_max_seqlen=packed_max_seqlen,
         )
 
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size).contiguous()
@@ -540,7 +551,16 @@ class LlamaFlashAttention2(LlamaAttention):
         return attn_output, attn_weights, past_key_value
 
     def _flash_attention_forward(
-        self, query_states, key_states, value_states, attention_mask, query_length, dropout=0.0, softmax_scale=None
+        self,
+        query_states,
+        key_states,
+        value_states,
+        attention_mask,
+        query_length,
+        dropout=0.0,
+        softmax_scale=None,
+        packed_cu_seqlens=None,
+        packed_max_seqlen=None,
     ):
         """
         Calls the forward method of Flash Attention - if the input hidden states contain at least one padding token
@@ -566,6 +586,23 @@ class LlamaFlashAttention2(LlamaAttention):
         else:
             # TODO: Remove the `query_length != 1` check once Flash Attention for RoCm is bumped to 2.1. For details, please see the comment in LlamaFlashAttention2 __init__.
             causal = self.is_causal and query_length != 1
+
+        if packed_cu_seqlens is not None:
+            # Treat the concatenated answer and description as independent
+            # variable-length causal sequences in one FlashAttention call.
+            output = flash_attn_varlen_func(
+                query_states.reshape(-1, query_states.shape[2], query_states.shape[3]),
+                key_states.reshape(-1, key_states.shape[2], key_states.shape[3]),
+                value_states.reshape(-1, value_states.shape[2], value_states.shape[3]),
+                cu_seqlens_q=packed_cu_seqlens,
+                cu_seqlens_k=packed_cu_seqlens,
+                max_seqlen_q=packed_max_seqlen,
+                max_seqlen_k=packed_max_seqlen,
+                dropout_p=dropout,
+                softmax_scale=softmax_scale,
+                causal=causal,
+            )
+            return output.unsqueeze(0)
 
         # Contains at least one padding token in the sequence
         if attention_mask is not None:
@@ -757,6 +794,8 @@ class LlamaDecoderLayer(nn.Module):
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
+        packed_cu_seqlens: Optional[torch.Tensor] = None,
+        packed_max_seqlen: Optional[int] = None,
         **kwargs,
     ):
         """
@@ -813,6 +852,8 @@ class LlamaDecoderLayer(nn.Module):
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
+            packed_cu_seqlens=packed_cu_seqlens,
+            packed_max_seqlen=packed_max_seqlen,
             **kwargs,
         )
         hidden_states = residual + hidden_states
@@ -1016,6 +1057,9 @@ class LlamaModel(LlamaPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        layer_end: Optional[int] = None,
+        packed_cu_seqlens: Optional[torch.Tensor] = None,
+        packed_max_seqlen: Optional[int] = None,
     ) -> Union[Tuple, BaseModelOutputWithPast]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -1080,6 +1124,12 @@ class LlamaModel(LlamaPreTrainedModel):
         # embed positions
         hidden_states = inputs_embeds
 
+        # HiDESC only needs intermediate states up to its highest loss band.
+        # Keeping this optional preserves the original full-depth forward path.
+        layer_count = len(self.layers)
+        if layer_end is not None:
+            layer_count = max(1, min(int(layer_end), layer_count))
+
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
@@ -1087,7 +1137,7 @@ class LlamaModel(LlamaPreTrainedModel):
 
         # loss_reg = []
         loss_reg = 0
-        for decoder_layer in self.layers:
+        for decoder_layer in self.layers[:layer_count]:
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
 
@@ -1100,6 +1150,8 @@ class LlamaModel(LlamaPreTrainedModel):
                     past_key_values,
                     output_attentions,
                     use_cache,
+                    packed_cu_seqlens,
+                    packed_max_seqlen,
                 )
             else:
                 layer_outputs = decoder_layer(
@@ -1109,6 +1161,8 @@ class LlamaModel(LlamaPreTrainedModel):
                     past_key_value=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
+                    packed_cu_seqlens=packed_cu_seqlens,
+                    packed_max_seqlen=packed_max_seqlen,
                 )
             if self.regularization_info_path is not None:
                 # loss_reg.extend(layer_outputs[-1])
@@ -1122,10 +1176,15 @@ class LlamaModel(LlamaPreTrainedModel):
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
 
+        # For a truncated pass, keep the pre-norm boundary state at index
+        # `layer_count`, matching the indexing of a full Llama forward.
+        if output_hidden_states and layer_count < len(self.layers):
+            all_hidden_states += (hidden_states,)
+
         hidden_states = self.norm(hidden_states)
 
-        # add hidden states from the last decoder layer
-        if output_hidden_states:
+        # The original full-depth path exposes the final normalized state.
+        if output_hidden_states and layer_count == len(self.layers):
             all_hidden_states += (hidden_states,)
 
         if self.regularization_info_path is not None:

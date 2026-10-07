@@ -59,8 +59,14 @@ def load_pretrained_model(model_path, model_base, model_name, load_8bit=False, l
                 model.model.embed_tokens.weight = torch.nn.Parameter(torch.empty(token_num, tokem_dim, device=model.device, dtype=model.dtype))
 
             print('Loading additional LLaVA weights...')
-            if os.path.exists(os.path.join(model_path, 'non_lora_trainables.bin')):
-                non_lora_trainables = torch.load(os.path.join(model_path, 'non_lora_trainables.bin'), map_location='cpu')
+            local_non_lora = os.path.join(model_path, 'non_lora_trainables.bin')
+            if os.path.exists(local_non_lora):
+                non_lora_trainables = torch.load(local_non_lora, map_location='cpu')
+            elif os.path.isdir(model_path):
+                raise FileNotFoundError(
+                    f"Expected local checkpoint file not found: {local_non_lora}. "
+                    f"The checkpoint directory exists, but it is incomplete."
+                )
             else:
                 # this is probably from HF Hub
                 from huggingface_hub import hf_hub_download

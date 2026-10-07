@@ -44,6 +44,7 @@ for IDX in $(seq 0 $((CHUNKS-1))); do
         --num-chunks $CHUNKS \
         --chunk-idx $IDX \
         --temperature 0 \
+        --max-new-tokens 32 \
         --conv-mode vicuna_v1 &
 done
 

@@ -112,5 +112,8 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             _inputs['images'] = images
         return _inputs
 
+# Newer Transformers releases ship a built-in ``llava`` config.  The
+# original O-LoRA code predates that entry and needs to replace it with the
+# repository's own LlavaConfig.
 AutoConfig.register("llava", LlavaConfig)
 AutoModelForCausalLM.register(LlavaConfig, LlavaLlamaForCausalLM)

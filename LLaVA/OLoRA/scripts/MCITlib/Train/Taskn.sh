@@ -28,20 +28,40 @@ BATCH_SIZE=$(read_config "$TRAIN_CONFIG" batch_size)
 GRAD_ACC=$(read_config "$TRAIN_CONFIG" grad_acc)
 LR=$(read_config "$TRAIN_CONFIG" lr)
 GRAD_CKPT=$(read_config "$TRAIN_CONFIG" gradient_checkpointing)
+if [[ -n "${GRADIENT_CHECKPOINTING_OVERRIDE:-}" ]]; then
+    GRAD_CKPT="$GRADIENT_CHECKPOINTING_OVERRIDE"
+fi
+MAX_STEPS=$(read_config "$TRAIN_CONFIG" max_steps 2>/dev/null || true)
+MAX_STEPS_ARGS=()
+if [[ -n "$MAX_STEPS" ]]; then
+    MAX_STEPS_ARGS+=(--max_steps "$MAX_STEPS")
+fi
 
-GPU_LIST=""
-for i in $(seq 0 $((GPU_NUM-1))); do
-    GPU_LIST+="$i,"
-done
-GPU_LIST=${GPU_LIST%,}
+if [[ -n "${GPU_IDS:-}" ]]; then
+    GPU_LIST="$GPU_IDS"
+else
+    GPU_LIST=""
+    for i in $(seq 0 $((GPU_NUM-1))); do
+        GPU_LIST+="$i,"
+    done
+    GPU_LIST=${GPU_LIST%,}
+fi
 
 ################## LLaMA-2 ##################
 # PROMPT_VERSION="llava_llama_2"
 # MODEL_VERSION="Llama-2-7b-chat-hf"
 ################## LLaMA-2 ##################
 
-deepspeed --include localhost:$GPU_LIST --master_port 9001 llava/train/train_mem_MOE.py \
-    --deepspeed ./scripts/zero2.json \
+MASTER_PORT=${MASTER_PORT:-9001}
+DEEPSPEED_CONFIG=${DEEPSPEED_CONFIG:-./scripts/zero2.json}
+DS_INCLUDE=(--include "localhost:$GPU_LIST")
+if [[ "$GPU_NUM" == "1" && -n "${CUDA_VISIBLE_DEVICES:-}" && -z "${GPU_IDS:-}" ]]; then
+    LAUNCHER=(torchrun --nproc_per_node=1 --master_port "$MASTER_PORT")
+else
+    LAUNCHER=(deepspeed "${DS_INCLUDE[@]}" --master_port "$MASTER_PORT")
+fi
+"${LAUNCHER[@]}" llava/train/train_mem_MOE.py \
+    --deepspeed "$DEEPSPEED_CONFIG" \
     --lora_enable True --lora_r $RANK --lora_alpha $((RANK * 2)) --mm_projector_lr 2e-5 \
     --expert_num $EXPERT \
     --model_name_or_path $MODEL_NAME \
@@ -76,4 +96,5 @@ deepspeed --include localhost:$GPU_LIST --master_port 9001 llava/train/train_mem
     --gradient_checkpointing $GRAD_CKPT \
     --dataloader_num_workers 4 \
     --lazy_preprocess True \
-    --report_to none
+    --report_to none \
+    "${MAX_STEPS_ARGS[@]}"

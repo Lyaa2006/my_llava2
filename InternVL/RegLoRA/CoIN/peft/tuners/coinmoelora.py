@@ -22,18 +22,25 @@ from ..utils import (
     transpose,
     ModulesToSaveWrapper,
 )
+from ..import_utils import is_bnb_4bit_available, is_bnb_available
+
 from .lora import (
     LoraConfig,
     LoraLayer,
     LoraModel,
     mark_only_lora_as_trainable,
-    Linear8bitLt,
-    Linear4bit,
     Embedding,
     Conv2d,
 )
 
-from ..import_utils import is_bnb_4bit_available, is_bnb_available
+# The normal BF16 RegLoRA training path does not use bitsandbytes.  The
+# quantized layer wrappers are only defined by ``lora.py`` when bitsandbytes
+# is installed, so importing them unconditionally made an otherwise valid
+# non-quantized environment fail before training began.
+if is_bnb_available():
+    from .lora import Linear8bitLt
+if is_bnb_4bit_available():
+    from .lora import Linear4bit
 
 if is_bnb_available():
     import bitsandbytes as bnb

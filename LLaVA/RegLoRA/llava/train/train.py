@@ -819,8 +819,29 @@ def train():
                 **bnb_model_from_pretrained_args
             )
         else:
+            config = transformers.AutoConfig.from_pretrained(
+                model_args.model_name_or_path, trust_remote_code=True
+            )
+            # The base LLaVA checkpoint may store the original Hugging Face
+            # vision-tower name.  In offline runs, honor the explicitly passed
+            # local tower path before LlavaMetaModel constructs the tower.
+            config.mm_vision_tower = model_args.vision_tower
+            # Older LLaVA configs predate newer Transformers LlamaConfig
+            # fields used by RegLoRA's vendored modeling code.
+            if not hasattr(config, "attention_dropout"):
+                config.attention_dropout = 0.0
+            if not hasattr(config, "rope_theta"):
+                config.rope_theta = 10000.0
+            if not hasattr(config, "attention_bias"):
+                config.attention_bias = False
+            # Keep the normal training path unchanged; enable FlashAttention
+            # only for an explicit compatibility smoke test.
+            if os.environ.get("REGLORA_USE_FLASH_ATTN", "0") == "1":
+                config._attn_implementation = "flash_attention_2"
+                print("Using FlashAttention 2 backend for RegLoRA smoke")
             model = LlavaLlamaForCausalLM.from_pretrained(
                 model_args.model_name_or_path,
+                config=config,
                 cache_dir=training_args.cache_dir,
                 torch_dtype=(torch.bfloat16 if training_args.bf16 else None),
                 regularization_info_path=regularization_info_path,

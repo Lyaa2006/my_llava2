@@ -187,17 +187,25 @@ class LLaVATrainer(Trainer):
 
 def load_model_from_previous_task(model, previous_task_model_path):
     print('Loading additional LLaVA/Intern weights...')
-    if os.path.exists(os.path.join(previous_task_model_path, 'non_lora_trainables.bin')):
-        non_lora_trainables = torch.load(os.path.join(previous_task_model_path, 'non_lora_trainables.bin'), map_location='cpu')
+    local_non_lora = os.path.join(previous_task_model_path, 'non_lora_trainables.bin')
+    if os.path.exists(local_non_lora):
+        non_lora_trainables = torch.load(local_non_lora, map_location='cpu')
+    elif os.path.isdir(previous_task_model_path):
+        raise FileNotFoundError(
+            f"Expected local checkpoint file not found: {local_non_lora}. "
+            f"The previous task checkpoint directory exists, but it is incomplete."
+        )
     else:
-        # this is probably from HF Hub
+        # fall back to HF Hub only when the provided path is not a local directory
         from huggingface_hub import hf_hub_download
+
         def load_from_hf(repo_id, filename, subfolder=None):
             cache_file = hf_hub_download(
                 repo_id=repo_id,
                 filename=filename,
                 subfolder=subfolder)
             return torch.load(cache_file, map_location='cpu')
+
         non_lora_trainables = load_from_hf(previous_task_model_path, 'non_lora_trainables.bin')
     non_lora_trainables = {(k[11:] if k.startswith('base_model.') else k): v for k, v in non_lora_trainables.items()}
     if any(k.startswith('model.model.') for k in non_lora_trainables):
@@ -209,6 +217,11 @@ def load_model_from_previous_task(model, previous_task_model_path):
     from peft import PeftModel
     print('Loading LoRA weights...')
     filename = os.path.join(previous_task_model_path, WEIGHTS_NAME)
+    if not os.path.exists(filename):
+        raise FileNotFoundError(
+            f"Expected local LoRA weights not found: {filename}. "
+            f"The previous task checkpoint directory is incomplete."
+        )
     adapters_weights = torch.load(filename, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu"))
     load_result = set_peft_model_state_dict(model, adapters_weights, adapter_name="default")
     print('Model is loaded...')

@@ -1,7 +1,7 @@
 <p align="center">
 <img src="./resources/MCITlib.png"  width="800px">
 </p>
-<h2 align="center"> <a href="https://arxiv.org/pdf/2508.07307">MCITlib: Multimodal Continual Instruction Tuning Library and Benchmark</a></h2>
+<h2 align="center">HiDARC: Hierarchical Description-Anchored Role Collaboration for Continual Multimodal Instruction Tuning</h2>
 <p align="center">
   <a href="#-introduction">✨Introduction</a> •
   <a href="#-methods-provided">🥇 Methods Provided</a> •
@@ -17,7 +17,7 @@
 <h5 align="center">
     
 [![📑 Paper (arXiv:2508.07307)](https://img.shields.io/badge/arXiv-2508.07307-b31b1b.svg?logo=arXiv)](https://arxiv.org/pdf/2508.07307)
-[![GitHub](https://img.shields.io/badge/-GitHub-000000?logo=github&logoColor=white)](https://github.com/Ghy0501/MCITlib)
+[![GitHub](https://img.shields.io/badge/-GitHub-000000?logo=github&logoColor=white)](https://github.com/Ghy0501/HiDARC)
 [![hf_space](https://img.shields.io/badge/🤗-Open%20In%20Spaces-blue.svg)](https://huggingface.co/MLLM-CL)
 [![ModelScope](https://img.shields.io/badge/🤖-ModelScope-624aff.svg)](https://www.modelscope.cn/organization/MLLM-CL)
 [![zhihu](https://img.shields.io/badge/-WeChat@机器之心-000000?logo=wechat&logoColor=07C160)](https://mp.weixin.qq.com/s/FBZw95e_0WibVbV075OyCA)
@@ -28,15 +28,15 @@
 
 ## ✨ Introduction
 
-MCITlib is a unified library for **continual instruction tuning** of **multimodal large language models (MLLMs)**. It integrates diverse continual learning methods into a single codebase, supporting both **image–text** and (as of v3) **video–text** setups. In addition to training scripts, MCITlib provides **standardized evaluation** across multiple benchmarks and architectures, making it easy to compare methods and reproduce results.
+HiDARC is a unified framework for **continual instruction tuning** of **multimodal large language models (MLLMs)**. It integrates description-anchored representation learning, hierarchical role routing, and standardized evaluation across multiple benchmarks and architectures.
 
-### Why MCITlib?
+### Why HiDARC?
 
-- 🚀 **Unified codebase & benchmarks:** To our knowledge, MCITlib is among the first open-source efforts to integrate both a method library and a benchmark suite for multimodal continual instruction tuning in one place.
+- 🚀 **Unified codebase & benchmarks:** HiDARC integrates the method implementation and benchmark suite for multimodal continual instruction tuning in one place.
 - 🌟 **Easy to get started:** This README provides step-by-step guidance on environment setup, data preparation, training, and evaluation — designed to be accessible to newcomers.
 - 🔄 **Actively maintained:** We regularly incorporate new methods, benchmarks, and base model support. See News for the latest updates (e.g., video support and the CL-VISTA benchmark in v3).
 
-Whether you are exploring continual learning for MLLMs for the first time or benchmarking new approaches, MCITlib aims to be a practical starting point. Issues, suggestions, and contributions are welcome!
+Whether you are exploring continual learning for MLLMs for the first time or benchmarking new approaches, HiDARC aims to be a practical starting point. Issues, suggestions, and contributions are welcome!
 
 <details open><summary>🫰 We also have other multimodal continual instruction tuning projects that may interest you 🫰. </summary><p>
 <!--  may -->
@@ -76,12 +76,10 @@ Whether you are exploring continual learning for MLLMs for the first time or ben
 
 ## 📰 News
 
-- **[2026.04]** 🔥🔥🔥 **MCITlib-v3** is released! This version adds **new continual instruction tuning methods**, **broader model support**, and extends the library to the **video** modality with **video benchmarks ([CL-VISTA](https://arxiv.org/pdf/2604.00677))** and **video-capable base models (Video-LLaVA & VideoLLaMA2)**—enabling continual instruction tuning and evaluation beyond classic image–text settings.
-- **[2026.01]** 🔥🔥🔥 We have updated the paper in [MCITlib](https://arxiv.org/pdf/2508.07307) with the latest results. Please feel free to check it out. 🎉🎉🎉
-- **[2025.10]** 🔥🔥🔥 **MCITlib-v2** has been updated! The latest version includes training and testing code for **8 mainstream multimodal continual instruction tuning methods**, compatible with **2 base models** and **3 continual instruction tuning datasets**. 🎉🎉🎉
+- **[2026.04]** 🔥🔥🔥 **HiDARC** is released as the new method and repository identity for continual multimodal instruction tuning.
+- **[2026.01]** 🔥🔥🔥 The continual multimodal instruction tuning codebase was renamed to **HiDARC**. 🎉🎉🎉
 - **[2025.09]** We have updated the new version of the [paper](https://arxiv.org/pdf/2508.07307) and attached the accuracy matrix of each method for reference. :tada:
-- **[2025.08]** Initial [MCITlib](https://arxiv.org/pdf/2508.07307) paper released! :tada:
-- **[2025.08]** Initial version of MCITlib is released. :tada:
+- **[2025.08]** Initial research codebase released. :tada:
 
 ## 🥇 Methods Provided
 - `LoRA-FT`: Baseline method which simply updates LoRA parameters on new tasks. [[Paper]](https://arxiv.org/pdf/2106.09685v1/1000) ![](https://img.shields.io/badge/ICLR-2022-blue)
@@ -177,13 +175,13 @@ We provide reference `config.json` and `generation_config.json` in `examples`.
 Note: Our experiment is conducted in a CUDA 11.8 environment, with most libraries in the setup aligned to this CUDA version. Therefore, we recommend using `nvcc -V` to check the CUDA version on your current server. If it does not match, please install CUDA 11.8 before proceeding.
 ### 1. Clone this repository
 ```
-git clone https://github.com/Ghy0501/MCITlib.git
-cd MCITlib
+git clone https://github.com/Ghy0501/HiDARC.git
+cd HiDARC
 ```
 ### 2. Install Package for LLaVA and InternVL
 ```
-conda create -n MCITlib python=3.10 -y
-conda activate MCITlib
+conda create -n HiDARC python=3.10 -y
+conda activate HiDARC
 conda install pytorch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 pytorch-cuda=11.8 -c pytorch -c nvidia
 cd LLaVA/LoRA-FT
 pip install --upgrade pip
@@ -219,7 +217,7 @@ For essential evaluation-related dependencies, please refer to the [UCIT](https:
 
 Before running any scripts, replace the placeholder paths below with the corresponding locations on your machine. Be sure to update dataset paths wherever they appear in the configs and scripts.
 
-- Replace `/your_path/MCITlib_v3` with the absolute path to this repository on your system.
+- Replace `/your_path/HiDARC` with the absolute path to this repository on your system.
 - Replace `/your_model_path/` with the directory that stores your pretrained or fine-tuned model weights.
 - Replace `/your_data_path/` with the root directory of your datasets.
 - Replace `/your_ckpts_path/` with the directory where training checkpoints and outputs should be written.
@@ -243,7 +241,7 @@ The program will automatically perform both training and inference. However, for
 
 ```bibtex
 @article{guo2025mcitlib,
-  title={MCITlib: Multimodal Continual Instruction Tuning Library and Benchmark},
+  title={HiDARC: Hierarchical Description-Anchored Role Collaboration for Continual Multimodal Instruction Tuning},
   author={Guo, Haiyang and Zhu, Fei and Zhao, Hongbo and Zeng, Fanhu and Liu, Wenzhuo and Ma, Shijie and Wang, Da-Han and Zhang, Xu-Yao},
   journal={arXiv preprint arXiv:2508.07307},
   year={2025}

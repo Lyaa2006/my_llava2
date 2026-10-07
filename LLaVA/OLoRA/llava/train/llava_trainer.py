@@ -11,9 +11,15 @@ from transformers.trainer import (
     get_parameter_names,
     has_length,
     ALL_LAYERNORM_LAYERS,
-    ShardedDDPOption,
     logger,
 )
+try:
+    from transformers.trainer import ShardedDDPOption
+except ImportError:
+    # Removed from newer Transformers; the old Trainer compared this member
+    # to the literal string "simple".
+    class ShardedDDPOption:
+        SIMPLE = "simple"
 from typing import List, Optional
 
 
@@ -202,7 +208,7 @@ class LLaVATrainer(Trainer):
         """
         if is_sagemaker_mp_enabled():
             return super().create_optimizer()
-        if self.sharded_ddp == ShardedDDPOption.SIMPLE:
+        if getattr(self, "sharded_ddp", None) == ShardedDDPOption.SIMPLE:
             return super().create_optimizer()
 
         opt_model = self.model
@@ -258,7 +264,7 @@ class LLaVATrainer(Trainer):
 
             optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(self.args)
 
-            if self.sharded_ddp == ShardedDDPOption.SIMPLE:
+            if getattr(self, "sharded_ddp", None) == ShardedDDPOption.SIMPLE:
                 self.optimizer = OSS(
                     params=optimizer_grouped_parameters,
                     optim=optimizer_cls,

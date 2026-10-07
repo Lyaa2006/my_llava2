@@ -4,6 +4,7 @@ import importlib
 import re
 import warnings
 import math
+import os
 from dataclasses import dataclass, field
 import copy
 
@@ -410,8 +411,17 @@ class HiDeMOELoraLinear(nn.Linear, HiDeMOELoraLayer):
                 result += lora_b_output * self.scaling[self.active_adapter]
             else:
                 if int(self.layer) != 31:
-                    lora_a_output = self.lora_A[self.active_adapter](self.lora_dropout[self.active_adapter](x))
-                    lora_b_output = self.lora_B[self.active_adapter](lora_a_output)
+                    dropped = self.lora_dropout[self.active_adapter](x)
+                    if os.environ.get("HIDE_FUSE_DELTA_AVG", "").strip() in {"1", "true", "True"}:
+                        lora_b_output = 0
+                        for i in range(self.cur_task + 1):
+                            lora_b_output = lora_b_output + self.lora_B[self.active_adapter].loraB[i](
+                                self.lora_A[self.active_adapter].loraA[i](dropped)
+                            )
+                        lora_b_output = lora_b_output / float(self.cur_task + 1)
+                    else:
+                        lora_a_output = self.lora_A[self.active_adapter](dropped)
+                        lora_b_output = self.lora_B[self.active_adapter](lora_a_output)
                     result += lora_b_output * self.scaling[self.active_adapter]
                 else:
                     for i in range(len(self.expert_weight)):
@@ -467,6 +477,8 @@ class HiDeMOELinearA(nn.Module):
             
                 for i in range(self.cur_task + 1):
                     fused_weight += merge_weight * self.loraA[i].weight
+                if os.environ.get("HIDE_FUSE_NORMALIZE", "").strip() in {"1", "true", "True"}:
+                    fused_weight /= float(self.cur_task + 1)
 
                 with torch.no_grad(): 
                     temp_mlp.weight.copy_(fused_weight)
@@ -519,6 +531,8 @@ class HiDeMOELinearB(nn.Module):
             
                 for i in range(self.cur_task + 1):
                     fused_weight += merge_weight * self.loraB[i].weight
+                if os.environ.get("HIDE_FUSE_NORMALIZE", "").strip() in {"1", "true", "True"}:
+                    fused_weight /= float(self.cur_task + 1)
 
                 with torch.no_grad(): 
                     temp_mlp.weight.copy_(fused_weight)

@@ -77,7 +77,7 @@ def eval_model(args):
                 top_p=args.top_p,
                 num_beams=args.num_beams,
                 # no_repeat_ngram_size=3,
-                max_new_tokens=256,
+                max_new_tokens=args.max_new_tokens,
                 use_cache=True)
 
         input_token_len = input_ids.shape[1]
@@ -115,6 +115,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_beams", type=int, default=1)
     parser.add_argument("--text-tower", type=str)
     parser.add_argument("--num-task", type=int, default=0)
+    parser.add_argument("--max_new_tokens", type=int, default=256)
     args = parser.parse_args()
 
     eval_model(args)

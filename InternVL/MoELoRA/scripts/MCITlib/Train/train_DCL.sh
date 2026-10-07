@@ -1,33 +1,65 @@
 #!/bin/bash
 
-HARD_PATH=/your_path/MCITlib_v3
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../../.." && pwd)"
+cd "$PROJECT_ROOT"
+
+MODE="${1:-full}"
+case "$MODE" in
+    full|smoke) ;;
+    *)
+        echo "Usage: $0 [full|smoke]" >&2
+        exit 2
+        ;;
+esac
+
+export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-5}"
+export PYTHON_BIN="${PYTHON_BIN:-/home/lyaa/miniconda3/envs/MCITlib_copy/bin/python}"
+export TORCHRUN_BIN="${TORCHRUN_BIN:-/home/lyaa/miniconda3/envs/MCITlib_copy/bin/torchrun}"
+export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
+
+if [[ "$MODE" == "smoke" ]]; then
+    DATA_SUFFIX="-smoke"
+    TRAIN_SUFFIX="_smoke"
+else
+    DATA_SUFFIX=""
+    TRAIN_SUFFIX=""
+fi
+
+MODEL_CONFIG="$REPO_ROOT/configs/model_configs/internvl.json"
+TRAIN_CONFIG_ROOT="$REPO_ROOT/configs/train_configs/MoELoRA/InternVL/MLLM-DCL/train"
+EVAL_CONFIG_ROOT="$REPO_ROOT/configs/train_configs/MoELoRA/InternVL/MLLM-DCL/eval"
+DATA_CONFIG_ROOT="$REPO_ROOT/configs/data_configs/MLLM-DCL"
 
 bash scripts/MCITlib/Train/Task1.sh \
-    $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/MLLM-DCL/RS.json \
-    $HARD_PATH/configs/train_configs/MoELoRA/InternVL/MLLM-DCL/train/task1.json
-bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 1
+    "$MODEL_CONFIG" \
+    "$DATA_CONFIG_ROOT/RS${DATA_SUFFIX}.json" \
+    "$TRAIN_CONFIG_ROOT/task1${TRAIN_SUFFIX}.json"
+bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 1 "$MODE"
 
 bash scripts/MCITlib/Train/Taskn.sh \
-    $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/MLLM-DCL/Med.json \
-    $HARD_PATH/configs/train_configs/MoELoRA/InternVL/MLLM-DCL/train/task2.json
-bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 2
+    "$MODEL_CONFIG" \
+    "$DATA_CONFIG_ROOT/Med${DATA_SUFFIX}.json" \
+    "$TRAIN_CONFIG_ROOT/task2${TRAIN_SUFFIX}.json"
+bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 2 "$MODE"
 
 bash scripts/MCITlib/Train/Taskn.sh \
-    $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/MLLM-DCL/AD.json \
-    $HARD_PATH/configs/train_configs/MoELoRA/InternVL/MLLM-DCL/train/task3.json
-bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 3
+    "$MODEL_CONFIG" \
+    "$DATA_CONFIG_ROOT/AD${DATA_SUFFIX}.json" \
+    "$TRAIN_CONFIG_ROOT/task3${TRAIN_SUFFIX}.json"
+bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 3 "$MODE"
 
 bash scripts/MCITlib/Train/Taskn.sh \
-    $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/MLLM-DCL/Sci.json \
-    $HARD_PATH/configs/train_configs/MoELoRA/InternVL/MLLM-DCL/train/task4.json
-bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 4
+    "$MODEL_CONFIG" \
+    "$DATA_CONFIG_ROOT/Sci${DATA_SUFFIX}.json" \
+    "$TRAIN_CONFIG_ROOT/task4${TRAIN_SUFFIX}.json"
+bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 4 "$MODE"
 
 bash scripts/MCITlib/Train/Taskn.sh \
-    $HARD_PATH/configs/model_configs/internvl.json \
-    $HARD_PATH/configs/data_configs/MLLM-DCL/Fin.json \
-    $HARD_PATH/configs/train_configs/MoELoRA/InternVL/MLLM-DCL/train/task5.json
-bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 5
+    "$MODEL_CONFIG" \
+    "$DATA_CONFIG_ROOT/Fin${DATA_SUFFIX}.json" \
+    "$TRAIN_CONFIG_ROOT/task5${TRAIN_SUFFIX}.json"
+bash scripts/MCITlib/Eval_MLLM_DCL/Eval_finetune1.sh 5 "$MODE"

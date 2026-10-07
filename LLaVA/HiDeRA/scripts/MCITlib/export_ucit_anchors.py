@@ -171,11 +171,17 @@ def configure_tokenizer_and_conversation(model_name: str, prompt_version: str, m
 
 
 def build_feature_extractors(model_config, device: torch.device, dtype: torch.dtype):
+    text_tower_path = model_config.get("text_tower", model_config.get("clip_tower"))
+    if not text_tower_path:
+        raise KeyError(
+            "model_config must define either 'text_tower' or 'clip_tower' "
+            "for UCIT anchor export"
+        )
     cfg = SimpleNamespace(
         mm_vision_tower=model_config["vision_tower"],
         vision_tower=model_config["vision_tower"],
-        mm_text_tower=model_config["text_tower"],
-        text_tower=model_config["text_tower"],
+        mm_text_tower=text_tower_path,
+        text_tower=text_tower_path,
         mm_vision_select_layer=-2,
         mm_text_select_layer=-1,
         mm_vision_select_feature="patch",
@@ -187,7 +193,7 @@ def build_feature_extractors(model_config, device: torch.device, dtype: torch.dt
     vision_tower.eval()
     text_tower.eval()
     clip_tokenizer = transformers.AutoTokenizer.from_pretrained(
-        model_config["text_tower"],
+        text_tower_path,
         model_max_length=77,
         padding_side="right",
         use_fast=True,

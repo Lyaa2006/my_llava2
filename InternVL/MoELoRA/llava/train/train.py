@@ -987,8 +987,12 @@ def train(attn_implementation=None):
                     args=training_args,
                     **data_module)
 
-    trainable_param_names = [n for n,p in model.named_parameters() if p.requires_grad]
-    print("Trainable parameters:\n{}".format(trainable_param_names))
+    trainable_param_names = [n for n, p in model.named_parameters() if p.requires_grad]
+    preview_names = trainable_param_names[:12]
+    rank0_print(
+        f"Trainable parameter count: {len(trainable_param_names)}; "
+        f"preview: {preview_names}"
+    )
 
     if list(pathlib.Path(training_args.output_dir).glob("checkpoint-*")):
         trainer.train(resume_from_checkpoint=True)
