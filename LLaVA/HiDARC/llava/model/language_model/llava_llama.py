@@ -213,10 +213,12 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self.effective_expert_num = expert_num
 
         for name, param in self.text_anchors.named_parameters():
-            param.requires_grad = True
+            # Routing anchors are updated online with `.data.copy_()` and are
+            # persistent state, not optimizer parameters.
+            param.requires_grad = False
 
         for name, param in self.spectral_image_anchors.named_parameters():
-            param.requires_grad = True
+            param.requires_grad = False
 
     def set_boundary_for_save(self):
         for name, param in self.text_boundary.named_parameters():
