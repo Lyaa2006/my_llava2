@@ -508,8 +508,7 @@ _get_stage1_band_core(layer_idx)
 
 当前已经有：
 
-- `_build_early_route_weights()`
-- `_build_middle_route_weights()`
+- `_build_role_conditioned_task_weights()`
 - late 权重逻辑，在 `_build_progressive_route_plan()` 中构造
 
 这些 basis 路由头不要推翻重写。

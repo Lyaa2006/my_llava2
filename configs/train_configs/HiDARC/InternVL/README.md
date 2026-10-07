@@ -5,16 +5,33 @@ same description-aligned losses and role-aware progressive routing as the
 LLaVA implementation.  InternVL-specific stage bands are `B1=[12,14]` and
 `B2=[27,29]`; the decoder has 32 layers.
 
+Install the pinned Python dependencies once in the dedicated environment:
+
+```bash
+python -m pip install -r InternVL/HiDARC/requirements.txt
+```
+
+The training launchers load the shared environment preflight automatically;
+they do not install packages during a run.
+
 Use the mainline launchers under `InternVL/HiDARC/scripts/MCITlib/Train/`.
 They generate run-local task configurations so that output paths and previous
 task dependencies are explicit and reproducible.  No ablation configuration
 is used by these launchers.
 
+Before either training launcher, set `CACHE_ROOT` to the selected
+description-cache root.  The launcher validates/generates the current task's
+description cache one task at a time.  It also creates and reuses a fixed
+InternVL spectral PCA file at the root when `SPECTRAL_PCA_PATH` is not set;
+the first task's image data is used as the calibration set, so no additional
+configuration field is required.
+
 Evaluation entry points are `Eval_UCIT/eval_ucit.sh` and
-`Eval_MLLM_DCL/eval_dcl.sh`.  They require explicit `CHECKPOINT_ROOT` and
-`RESULT_ROOT` environment variables, then build run-local evaluation configs
-with the InternVL text tower and the InternVL stage-1 band schedule.  They do
-not provide a checkpoint default and do not reference the ablation tree.
+`Eval_MLLM_DCL/eval_dcl.sh`. They require explicit `CHECKPOINT_ROOT` and
+`RESULT_ROOT` environment variables. The InternVL stage-1 band schedule is
+fixed in the HiDARC model code, rather than injected from an evaluation JSON.
+They do not provide a checkpoint default and do not reference the ablation
+tree.
 
 ## Fixed spectral PCA
 

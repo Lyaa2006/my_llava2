@@ -22,6 +22,8 @@ for required_file in "$MODEL_CONFIG" "$DATA_CONFIG" "$TRAIN_CONFIG"; do
         exit 1
     fi
 done
+validate_model_config_paths "$MODEL_CONFIG"
+validate_data_config_paths "$DATA_CONFIG"
 
 if [ -n "${LOG_FILE:-}" ] && [ "${LOG_TEE_ACTIVE:-0}" != "1" ]; then
     mkdir -p "$(dirname "$LOG_FILE")"
@@ -110,20 +112,21 @@ PY
 GPU_NUM=$(read_config "$TRAIN_CONFIG" gpu_num)
 RANK=$(read_config "$TRAIN_CONFIG" rank)
 EXPERT=$(read_config "$TRAIN_CONFIG" expert_num)
+HIDARC_PROTOCOL=$(read_config "$TRAIN_CONFIG" protocol)
 MODEL_NAME=$(read_config "$MODEL_CONFIG" model_name)
 MM_PROJECTOR=$(read_config "$MODEL_CONFIG" mm_projector)
 DATA_PATH=$(read_config "$DATA_CONFIG" train_path)
 IMAGE=$(read_config "$DATA_CONFIG" train_folder)
 VISION_TOWER=$(read_config "$MODEL_CONFIG" vision_tower)
 CLIP_TOWER=$(read_optional_config "$MODEL_CONFIG" clip_tower "")
-OUTPUT_DIR=$(read_config "$TRAIN_CONFIG" output_dir)
+OUTPUT_DIR="${HIDARC_OUTPUT_DIR:-$(read_config "$TRAIN_CONFIG" output_dir)}"
 CUR_TASK=$(read_config "$TRAIN_CONFIG" cur_task)
 EPOCH=$(read_config "$TRAIN_CONFIG" epoch)
 BATCH_SIZE=$(read_config "$TRAIN_CONFIG" batch_size)
 GRAD_ACC=$(read_config "$TRAIN_CONFIG" grad_acc)
 LR=$(read_config "$TRAIN_CONFIG" lr)
-SPECTRAL_PCA_PATH=$(read_optional_config "$TRAIN_CONFIG" spectral_pca_path "")
-SPECTRAL_ROUTE_CHANNEL_DIM=$(read_optional_config "$TRAIN_CONFIG" spectral_route_channel_dim 512)
+SPECTRAL_PCA_PATH="${SPECTRAL_PCA_PATH:-$(read_optional_config "$TRAIN_CONFIG" spectral_pca_path "")}"
+SPECTRAL_ROUTE_CHANNEL_DIM="${SPECTRAL_ROUTE_CHANNEL_DIM:-$(read_optional_config "$TRAIN_CONFIG" spectral_route_channel_dim 512)}"
 RUN_SUFFIX=${UCIT_RUN_ID:+_$UCIT_RUN_ID}
 OUTPUT_DIR="${OUTPUT_DIR}${RUN_SUFFIX}"
 
@@ -132,35 +135,36 @@ if [ -z "$SPECTRAL_PCA_PATH" ] || [ ! -f "$SPECTRAL_PCA_PATH" ]; then
     exit 1
 fi
 
-DESCRIPTION_PROMPT=$(read_optional_config "$TRAIN_CONFIG" description_prompt "Describe the image using visual evidence: objects, attributes, shapes, colors, textures, scene context, visible text, and spatial relations.")
-DESCRIPTION_MAX_TOKENS=$(read_optional_config "$TRAIN_CONFIG" description_max_tokens 32)
-DESCRIPTION_FOCUS_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_focus_weight 0.2)
-DESCRIPTION_FOCUS_ALPHA=$(read_optional_config "$TRAIN_CONFIG" description_focus_alpha 0.5)
-DESCRIPTION_ENERGY_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" description_energy_weight 1e-4)
-DESCRIPTION_ENERGY_MARGIN=$(read_optional_config "$TRAIN_CONFIG" description_energy_margin 30.0)
+DESCRIPTION_PROMPT="${DESCRIPTION_PROMPT:-$(read_optional_config "$TRAIN_CONFIG" description_prompt "Describe the image using visual evidence: objects, attributes, shapes, colors, textures, scene context, visible text, and spatial relations.")}"
+DESCRIPTION_MAX_TOKENS="${DESCRIPTION_MAX_TOKENS:-$(read_optional_config "$TRAIN_CONFIG" description_max_tokens 32)}"
+DESCRIPTION_FOCUS_WEIGHT="${DESCRIPTION_FOCUS_WEIGHT:-$(read_optional_config "$TRAIN_CONFIG" description_focus_weight 0.2)}"
+DESCRIPTION_FOCUS_ALPHA="${DESCRIPTION_FOCUS_ALPHA:-$(read_optional_config "$TRAIN_CONFIG" description_focus_alpha 0.5)}"
+DESCRIPTION_ENERGY_WEIGHT="${DESCRIPTION_ENERGY_WEIGHT:-$(read_optional_config "$TRAIN_CONFIG" description_energy_weight 1e-4)}"
+DESCRIPTION_ENERGY_MARGIN="${DESCRIPTION_ENERGY_MARGIN:-$(read_optional_config "$TRAIN_CONFIG" description_energy_margin 30.0)}"
 B1_LOW_LAYER=$(read_optional_config "$TRAIN_CONFIG" b1_low_layer 15)
 B1_HIGH_LAYER=$(read_optional_config "$TRAIN_CONFIG" b1_high_layer 18)
 B2_LOW_LAYER=$(read_optional_config "$TRAIN_CONFIG" b2_low_layer 29)
-B2_HIGH_LAYER=$(read_optional_config "$TRAIN_CONFIG" b2_high_layer 31)
+B2_HIGH_LAYER="${B2_HIGH_LAYER:-$(read_optional_config "$TRAIN_CONFIG" b2_high_layer 29)}"
 ALIGN_BAND_ETA=$(read_optional_config "$TRAIN_CONFIG" align_band_eta 0.5)
 STRUCT_BAND_ETA=$(read_optional_config "$TRAIN_CONFIG" struct_band_eta 0.35)
 STRUCT_BAND_ENERGY_RHO=$(read_optional_config "$TRAIN_CONFIG" struct_band_energy_rho 1.0)
 LOSS_BAND_EMA_GAMMA=$(read_optional_config "$TRAIN_CONFIG" loss_band_ema_gamma 0.9)
 LOSS_BAND_POSITION_EPS=$(read_optional_config "$TRAIN_CONFIG" loss_band_position_eps 0.05)
-ALIGN_LOSS_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" align_loss_weight 0.01)
-STANDARD_CE_WEIGHT=$(read_optional_config "$TRAIN_CONFIG" standard_ce_weight 3.0)
+ALIGN_LOSS_WEIGHT="${ALIGN_LOSS_WEIGHT:-$(read_optional_config "$TRAIN_CONFIG" align_loss_weight 0.01)}"
+STANDARD_CE_WEIGHT="${STANDARD_CE_WEIGHT:-$(read_optional_config "$TRAIN_CONFIG" standard_ce_weight 3.0)}"
 DESCRIPTION_CACHE_MODEL_SOURCE=$(read_optional_config "$TRAIN_CONFIG" description_cache_model_source "base")
 DESCRIPTION_CACHE_MAX_NEW_ENTRIES=$(read_optional_config "$TRAIN_CONFIG" description_cache_max_new_entries -1)
 DESCRIPTION_CACHE_FORMAT="expanded_text_v1"
 SAVE_STEPS=$(read_optional_config "$TRAIN_CONFIG" save_steps 50000)
 SAVE_STRATEGY=$(read_optional_config "$TRAIN_CONFIG" save_strategy steps)
-MODEL_MAX_LENGTH=$(read_optional_config "$TRAIN_CONFIG" model_max_length 2048)
-DATALOADER_NUM_WORKERS=$(read_optional_config "$TRAIN_CONFIG" dataloader_num_workers 4)
+MODEL_MAX_LENGTH="${MODEL_MAX_LENGTH:-$(read_optional_config "$TRAIN_CONFIG" model_max_length 2048)}"
+DATALOADER_NUM_WORKERS="${DATALOADER_NUM_WORKERS:-$(read_optional_config "$TRAIN_CONFIG" dataloader_num_workers 4)}"
 MAX_STEPS=$(read_optional_config "$TRAIN_CONFIG" max_steps -1)
 
 DEFAULT_CACHE_TAG=$(basename "$DATA_PATH" .json)
 DEFAULT_DESCRIPTION_CACHE_DIR="$OUTPUT_DIR/reference_description_cache_${DESCRIPTION_CACHE_MODEL_SOURCE}_${DEFAULT_CACHE_TAG}_${DESCRIPTION_CACHE_FORMAT}"
 DESCRIPTION_CACHE_DIR="${DESCRIPTION_CACHE_DIR:-$(read_optional_config "$TRAIN_CONFIG" description_cache_dir "$DEFAULT_DESCRIPTION_CACHE_DIR")}"
+export DESCRIPTION_CACHE_DIR
 quarantine_incomplete_cache_dir "$DESCRIPTION_CACHE_DIR" "Task1 description cache"
 
 echo "Output checkpoint: $OUTPUT_DIR"
@@ -222,6 +226,16 @@ PY
 )
 fi
 
+if [ "$CACHE_READY" != "True" ]; then
+    "$SCRIPT_DIR/extract_description_cache.sh" "$MODEL_CONFIG" "$DATA_CONFIG" "$TRAIN_CONFIG"
+    EXISTING_CACHE_ENTRIES=$(find "$DESCRIPTION_CACHE_DIR" -maxdepth 1 -name '*.pt' | wc -l)
+    if [ "$EXISTING_CACHE_ENTRIES" -lt "$EXPECTED_CACHE_ENTRIES" ]; then
+        echo "Description cache generation finished incompletely: $EXISTING_CACHE_ENTRIES/$EXPECTED_CACHE_ENTRIES" >&2
+        exit 1
+    fi
+    CACHE_READY=True
+fi
+
 ################## LLaMA-2 ##################
 # PROMPT_VERSION="llava_llama_2"
 # MODEL_VERSION="Llama-2-7b-chat-hf"
@@ -233,10 +247,19 @@ if [ "$MAX_STEPS" -gt 0 ]; then
 fi
 for routing_key in \
     use_spectral_image_routing \
+    use_spectral_role_prototype \
+    role_reset_on_strategy_change \
     use_text_anchor_routing \
     spectral_cutoff \
     spectral_low_bins \
     spectral_high_bins \
+    spectral_image_ema_decay \
+    text_activation_ema_decay \
+    text_activation_highpass_exponent \
+    text_activation_magnitude_weight \
+    text_activation_real_weight \
+    text_activation_imag_weight \
+    text_activation_use_fftshift \
     spectral_image_weight \
     text_weight \
     history_weight \
@@ -251,17 +274,14 @@ for routing_key in \
     role_assignment_top_k \
     role_assignment_min_similarity \
     role_assignment_margin \
+    role_assignment_pair_weight \
+    role_assignment_member_temperature \
+    role_assignment_member_support_mode \
+    role_assignment_member_excess_alpha \
     role_member_top_k \
-    routing_early_layers \
-    routing_early_mode \
-    routing_middle_layers \
-    routing_middle_temperature \
-    routing_middle_role_gamma \
-    routing_middle_role_margin_low \
-    routing_middle_role_margin_high \
-    routing_middle_intra_margin_low \
-    routing_middle_intra_margin_high \
-    routing_late_layers; do
+    routing_score_normalization \
+    routing_score_scale \
+    routing_strategy; do
     append_optional_train_arg "$routing_key"
 done
 
@@ -273,6 +293,7 @@ if [ "$CACHE_READY" != "True" ]; then
         --lora_r $RANK \
         --lora_alpha $((RANK * 2)) \
         --expert_num $EXPERT \
+        --hidarc_protocol "$HIDARC_PROTOCOL" \
         --model_name_or_path $MODEL_NAME \
         --pretrain_mm_mlp_adapter $MM_PROJECTOR \
         --version $PROMPT_VERSION \
@@ -301,10 +322,11 @@ if [ "$CACHE_READY" != "True" ]; then
         --spectral_route_channel_dim "$SPECTRAL_ROUTE_CHANNEL_DIM"
 fi
 
-"${DEEPSPEED_ENV_PREFIX[@]}" deepspeed "${DEEPSPEED_GPU_ARGS[@]}" --master_port "${MASTER_PORT:-9001}" llava/train/train_mem_MOE.py \
+"${DEEPSPEED_ENV_PREFIX[@]}" deepspeed "${DEEPSPEED_GPU_ARGS[@]}" --master_port "${MASTER_PORT:-9001}" llava/train/train_MOE.py \
     --deepspeed ./scripts/zero2.json \
     --lora_enable True --lora_r $RANK --lora_alpha $((RANK * 2)) --mm_projector_lr 2e-5 \
     --expert_num $EXPERT \
+    --hidarc_protocol "$HIDARC_PROTOCOL" \
     --model_name_or_path $MODEL_NAME \
     --pretrain_mm_mlp_adapter $MM_PROJECTOR \
     --version $PROMPT_VERSION \

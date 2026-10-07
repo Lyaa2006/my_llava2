@@ -24,20 +24,10 @@ from transformers import AutoConfig, AutoModelForCausalLM, \
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 from ..llava_arch import LlavaMetaModel, LlavaMetaForCausalLM
-
-
-CANONICAL_ROUTING_STRATEGY = "prototype_only_role_constrained_late"
-DEPRECATED_ROUTING_CONFIG_KEYS = frozenset(
-    {
-        "routing_role_prior_weight",
-        "routing_role_member_weight",
-        "routing_role_size_penalty",
-        "routing_role_prototype_weight",
-        "routing_role_score_mode",
-        "routing_late_top_k",
-        "routing_late_one_hot",
-        "routing_late_role_constrained_one_hot",
-    }
+from ..hidarc_final import (
+    CANONICAL_ROUTING_STRATEGY,
+    FIXED_HIDARC_KEYS,
+    get_fixed_hidarc_config,
 )
 
 
@@ -72,15 +62,7 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
         self.effective_expert_num = self.expert_num
         self.max_task_slots = 10
         self.max_role_slots = self.max_task_slots
-        saved_relation_config = getattr(config, "relation_routing_config", None)
-        if not isinstance(saved_relation_config, dict):
-            saved_relation_config = {}
-        else:
-            saved_relation_config = {
-                key: value
-                for key, value in saved_relation_config.items()
-                if key not in DEPRECATED_ROUTING_CONFIG_KEYS
-            }
+        saved_relation_config = get_fixed_hidarc_config()
         spectral_low_bins = int(saved_relation_config.get("spectral_low_bins", 4))
         spectral_high_bins = int(saved_relation_config.get("spectral_high_bins", 4))
         configured_spectral_dim = getattr(config, "mm_spectral_feature_dim", None)
@@ -150,7 +132,6 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             "role_reset_on_strategy_change": True,
             "use_text_anchor_routing": True,
             "use_stage1_band_schedule_eval": True,
-            "stage1_band_schedule_path": None,
             "eval_use_role_spectral_prototype": True,
             "eval_disable_role_image_prototype": True,
             "spectral_cutoff": 0.33,
@@ -210,13 +191,15 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
             "routing_role_task_floor": 0.05,
             "routing_strategy": "prototype_only_role_constrained_late",
         }
+        configured_relation_config = getattr(config, "relation_routing_config", None)
+        if isinstance(configured_relation_config, dict):
+            for key, value in configured_relation_config.items():
+                if key not in FIXED_HIDARC_KEYS and value is not None:
+                    self.relation_routing_config[key] = value
+        # Anchor extraction and layer-band policy remain immutable in code.
         self.relation_routing_config.update(saved_relation_config)
         self.relation_routing_config.update(
             {
-                "use_spectral_role_prototype": True,
-                "role_reset_on_strategy_change": True,
-                "eval_use_role_spectral_prototype": True,
-                "eval_disable_role_image_prototype": True,
                 "routing_strategy": CANONICAL_ROUTING_STRATEGY,
             }
         )
@@ -259,32 +242,6 @@ class LlavaLlamaForCausalLM(LlamaForCausalLM, LlavaMetaForCausalLM):
 
     def get_model(self):
         return self.model
-
-    def configure_relation_routing(self, **kwargs):
-        requested_strategy = kwargs.get("routing_strategy")
-        if (
-            requested_strategy is not None
-            and requested_strategy != CANONICAL_ROUTING_STRATEGY
-        ):
-            raise ValueError(
-                "HiDESC only supports routing_strategy="
-                + repr(CANONICAL_ROUTING_STRATEGY)
-            )
-        deprecated_keys = sorted(
-            key
-            for key, value in kwargs.items()
-            if value is not None and key in DEPRECATED_ROUTING_CONFIG_KEYS
-        )
-        if deprecated_keys:
-            raise ValueError(
-                "Deprecated HiDESC routing options are not supported: "
-                + ", ".join(deprecated_keys)
-            )
-        for key, value in kwargs.items():
-            if value is None:
-                continue
-            self.relation_routing_config[key] = value
-        self.config.relation_routing_config = dict(self.relation_routing_config)
 
     def set_eval(self, num_task, eval_task_id=None, effective_num_task=None):
         self.declared_expert_num = int(num_task)

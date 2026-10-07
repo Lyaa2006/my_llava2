@@ -134,6 +134,82 @@ ensure_existing_dir() {
     fi
 }
 
+validate_model_config_paths() {
+    local config_path="$1"
+    "$PYTHON_BIN" - "$config_path" <<'PY'
+import json
+import os
+import sys
+
+config_path = sys.argv[1]
+with open(config_path, encoding="utf-8") as handle:
+    config = json.load(handle)
+
+errors = []
+for key in ("model_name", "vision_tower", "text_tower", "clip_tower"):
+    value = config.get(key)
+    if value and not os.path.isdir(os.path.expanduser(value)):
+        errors.append(f"{key} directory does not exist: {value}")
+projector = config.get("mm_projector")
+if projector and not os.path.isfile(os.path.expanduser(projector)):
+    errors.append(f"mm_projector file does not exist: {projector}")
+
+if errors:
+    print("Model path validation failed:", file=sys.stderr)
+    for error in errors:
+        print(f"  - {error}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+}
+
+validate_data_config_paths() {
+    local config_path="$1"
+    "$PYTHON_BIN" - "$config_path" <<'PY'
+import json
+import os
+import sys
+
+config_path = sys.argv[1]
+with open(config_path, encoding="utf-8") as handle:
+    config = json.load(handle)
+
+errors = []
+train_path = config.get("train_path")
+train_folder = config.get("train_folder")
+if not train_path or not os.path.isfile(os.path.expanduser(train_path)):
+    errors.append(f"train_path file does not exist: {train_path}")
+if not train_folder or not os.path.isdir(os.path.expanduser(train_folder)):
+    errors.append(f"train_folder directory does not exist: {train_folder}")
+if not errors:
+    train_path = os.path.expanduser(train_path)
+    train_folder = os.path.expanduser(train_folder)
+    with open(train_path, encoding="utf-8") as handle:
+        samples = json.load(handle)
+    missing_images = []
+    for index, sample in enumerate(samples):
+        raw_images = sample.get("image") if isinstance(sample, dict) else None
+        if raw_images is None:
+            continue
+        if not isinstance(raw_images, list):
+            raw_images = [raw_images]
+        for raw_image in raw_images:
+            image_path = raw_image if os.path.isabs(raw_image) else os.path.join(train_folder, raw_image)
+            if not os.path.isfile(image_path):
+                missing_images.append(f"sample[{index}]: {image_path}")
+                if len(missing_images) >= 10:
+                    break
+        if len(missing_images) >= 10:
+            break
+    errors.extend(missing_images)
+
+if errors:
+    print("Dataset path validation failed:", file=sys.stderr)
+    for error in errors:
+        print(f"  - {error}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+}
+
 read_optional_json_field() {
     python3 - "$1" "$2" <<'PY'
 import json

@@ -1,9 +1,9 @@
 # HiDARC training configuration
 
-The four `final.json` profiles below record the hyperparameters used by the
-completed HiDARC runs. They follow the repository convention used by the
-other methods: `rank` is the LoRA rank and `expert_num` is the number of task
-experts. The launchers derive `lora_alpha = 2 * rank`.
+The four `final.json` profiles below record run resources and optimization
+settings. They follow the repository convention used by the other methods:
+`rank` is the LoRA rank and `expert_num` is the number of task experts. The
+launchers derive `lora_alpha = 2 * rank`.
 
 | Profile | Reference run | Model | Protocol |
 | --- | --- | --- | --- |
@@ -17,16 +17,12 @@ checkpoint, and description-cache paths. Use the final profiles as the
 canonical hyperparameter reference when generating a new run-local task
 configuration.
 
-Each protocol uses one eval JSON per task under its `eval/` directory. Every
-task file contains the checkpoint/evaluator fields, the routing file actually
-loaded by the evaluator, and an inline `activation` object with the active
-spectral/text/role/layer-routing hyperparameters.
-
-Routing is kept separately under `configs/routing_configs/HiDARC/` because
-UCIT and DCL use different role-bank and layer-routing policies. The final
-run references are:
-
-- LLaVA UCIT: `ucit_role_new_strategy_eval_sharp_canonical_llava_20260827.json`
-- LLaVA DCL: `dcl_role_new_partition_eval_late_role_prototype_only.json`
-- InternVL UCIT: `ucit_role_internvl_4role_eval_v2_rebuild50_20260908.json`
-- InternVL DCL: `dcl_probe_activation_balanced_role3_rebuild_20260922.json`
+The final FFT anchor extraction and fixed stage-band policy are implemented in
+`LLaVA/HiDARC/llava/model/hidarc_final.py` and
+`InternVL/HiDARC/llava/model/hidarc_final.py`; those fixed values are not in
+JSON. The four `final.json` profiles independently retain their role-bank
+assignment parameters; evaluation task JSON files retain the corresponding
+experiment-specific routing activation parameters. The anchor is the online
+sample-weighted mean of the same per-example descriptor used offline, so it is
+independent of batch partition. A later task rejects a prior checkpoint unless
+its persisted anchor/role profile matches exactly.

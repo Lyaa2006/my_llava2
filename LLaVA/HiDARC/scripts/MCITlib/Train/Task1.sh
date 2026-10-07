@@ -22,6 +22,8 @@ for required_file in "$MODEL_CONFIG" "$DATA_CONFIG" "$TRAIN_CONFIG"; do
         exit 1
     fi
 done
+validate_model_config_paths "$MODEL_CONFIG"
+validate_data_config_paths "$DATA_CONFIG"
 
 if [ -n "${LOG_FILE:-}" ] && [ "${LOG_TEE_ACTIVE:-0}" != "1" ]; then
     mkdir -p "$(dirname "$LOG_FILE")"
@@ -110,6 +112,7 @@ PY
 GPU_NUM=$(read_config "$TRAIN_CONFIG" gpu_num)
 RANK=$(read_config "$TRAIN_CONFIG" rank)
 EXPERT=$(read_config "$TRAIN_CONFIG" expert_num)
+HIDARC_PROTOCOL=$(read_config "$TRAIN_CONFIG" protocol)
 MODEL_NAME=$(read_config "$MODEL_CONFIG" model_name)
 MM_PROJECTOR=$(read_config "$MODEL_CONFIG" mm_projector)
 DATA_PATH=$(read_config "$DATA_CONFIG" train_path)
@@ -152,6 +155,7 @@ MAX_STEPS=$(read_optional_config "$TRAIN_CONFIG" max_steps -1)
 DEFAULT_CACHE_TAG=$(basename "$DATA_PATH" .json)
 DEFAULT_DESCRIPTION_CACHE_DIR="$OUTPUT_DIR/reference_description_cache_${DESCRIPTION_CACHE_MODEL_SOURCE}_${DEFAULT_CACHE_TAG}_${DESCRIPTION_CACHE_FORMAT}"
 DESCRIPTION_CACHE_DIR="${DESCRIPTION_CACHE_DIR:-$(read_optional_config "$TRAIN_CONFIG" description_cache_dir "$DEFAULT_DESCRIPTION_CACHE_DIR")}"
+export DESCRIPTION_CACHE_DIR
 quarantine_incomplete_cache_dir "$DESCRIPTION_CACHE_DIR" "Task1 description cache"
 
 echo "Output checkpoint: $OUTPUT_DIR"
@@ -213,6 +217,16 @@ PY
 )
 fi
 
+if [ "$CACHE_READY" != "True" ]; then
+    "$SCRIPT_DIR/extract_description_cache.sh" "$MODEL_CONFIG" "$DATA_CONFIG" "$TRAIN_CONFIG"
+    EXISTING_CACHE_ENTRIES=$(find "$DESCRIPTION_CACHE_DIR" -maxdepth 1 -name '*.pt' | wc -l)
+    if [ "$EXISTING_CACHE_ENTRIES" -lt "$EXPECTED_CACHE_ENTRIES" ]; then
+        echo "Description cache generation finished incompletely: $EXISTING_CACHE_ENTRIES/$EXPECTED_CACHE_ENTRIES" >&2
+        exit 1
+    fi
+    CACHE_READY=True
+fi
+
 ################## LLaMA-2 ##################
 # PROMPT_VERSION="llava_llama_2"
 # MODEL_VERSION="Llama-2-7b-chat-hf"
@@ -224,10 +238,19 @@ if [ "$MAX_STEPS" -gt 0 ]; then
 fi
 for routing_key in \
     use_spectral_image_routing \
+    use_spectral_role_prototype \
+    role_reset_on_strategy_change \
     use_text_anchor_routing \
     spectral_cutoff \
     spectral_low_bins \
     spectral_high_bins \
+    spectral_image_ema_decay \
+    text_activation_ema_decay \
+    text_activation_highpass_exponent \
+    text_activation_magnitude_weight \
+    text_activation_real_weight \
+    text_activation_imag_weight \
+    text_activation_use_fftshift \
     spectral_image_weight \
     text_weight \
     history_weight \
@@ -242,17 +265,14 @@ for routing_key in \
     role_assignment_top_k \
     role_assignment_min_similarity \
     role_assignment_margin \
+    role_assignment_pair_weight \
+    role_assignment_member_temperature \
+    role_assignment_member_support_mode \
+    role_assignment_member_excess_alpha \
     role_member_top_k \
-    routing_early_layers \
-    routing_early_mode \
-    routing_middle_layers \
-    routing_middle_temperature \
-    routing_middle_role_gamma \
-    routing_middle_role_margin_low \
-    routing_middle_role_margin_high \
-    routing_middle_intra_margin_low \
-    routing_middle_intra_margin_high \
-    routing_late_layers; do
+    routing_score_normalization \
+    routing_score_scale \
+    routing_strategy; do
     append_optional_train_arg "$routing_key"
 done
 
@@ -264,6 +284,7 @@ if [ "$CACHE_READY" != "True" ]; then
         --lora_r $RANK \
         --lora_alpha $((RANK * 2)) \
         --expert_num $EXPERT \
+        --hidarc_protocol "$HIDARC_PROTOCOL" \
         --model_name_or_path $MODEL_NAME \
         --pretrain_mm_mlp_adapter $MM_PROJECTOR \
         --version $PROMPT_VERSION \
@@ -290,10 +311,11 @@ if [ "$CACHE_READY" != "True" ]; then
         --extract_description_cache_only True
 fi
 
-"${DEEPSPEED_ENV_PREFIX[@]}" deepspeed "${DEEPSPEED_GPU_ARGS[@]}" --master_port "${MASTER_PORT:-9001}" llava/train/train_mem_MOE.py \
+"${DEEPSPEED_ENV_PREFIX[@]}" deepspeed "${DEEPSPEED_GPU_ARGS[@]}" --master_port "${MASTER_PORT:-9001}" llava/train/train_MOE.py \
     --deepspeed ./scripts/zero2.json \
     --lora_enable True --lora_r $RANK --lora_alpha $((RANK * 2)) --mm_projector_lr 2e-5 \
     --expert_num $EXPERT \
+    --hidarc_protocol "$HIDARC_PROTOCOL" \
     --model_name_or_path $MODEL_NAME \
     --pretrain_mm_mlp_adapter $MM_PROJECTOR \
     --version $PROMPT_VERSION \

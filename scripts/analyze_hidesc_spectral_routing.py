@@ -25,6 +25,7 @@ from llava.constants import (  # noqa: E402
 from llava.conversation import conv_templates  # noqa: E402
 from llava.mm_utils import process_images, tokenizer_image_token  # noqa: E402
 from llava.model.builder import load_pretrained_model  # noqa: E402
+from llava.model.relation_text_utils import build_task_anchor_bank  # noqa: E402
 from llava.utils import disable_torch_init  # noqa: E402
 
 
@@ -185,6 +186,34 @@ def maybe_load_routing_config(path):
     return payload
 
 
+def maybe_configure_spectral_pca(model, model_path):
+    vision_tower = getattr(model, "get_vision_tower", lambda: None)()
+    if vision_tower is None or not hasattr(vision_tower, "configure_spectral_pca"):
+        return
+    spectral_pca_path = None
+    spectral_route_channel_dim = None
+    config = getattr(model, "config", None)
+    if config is not None:
+        spectral_pca_path = getattr(config, "spectral_pca_path", None)
+        spectral_route_channel_dim = getattr(config, "spectral_route_channel_dim", None)
+    if spectral_pca_path is None and model_path:
+        config_path = Path(model_path) / "config.json"
+        if config_path.is_file():
+            with config_path.open("r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            spectral_pca_path = payload.get("spectral_pca_path", spectral_pca_path)
+            spectral_route_channel_dim = payload.get(
+                "spectral_route_channel_dim",
+                spectral_route_channel_dim,
+            )
+    if spectral_pca_path is None and spectral_route_channel_dim is None:
+        return
+    vision_tower.configure_spectral_pca(
+        spectral_pca_path,
+        spectral_route_channel_dim,
+    )
+
+
 def load_rgb_images(samples, image_folder):
     images = []
     for sample in samples:
@@ -192,6 +221,32 @@ def load_rgb_images(samples, image_folder):
         with Image.open(image_path) as image:
             images.append(image.convert("RGB"))
     return images
+
+
+def extract_sample_query_text(sample):
+    text = sample.get("text")
+    if isinstance(text, str) and text.strip():
+        return text.strip()
+    conversations = sample.get("conversations")
+    if isinstance(conversations, list):
+        for turn in conversations:
+            if str(turn.get("from", "")).lower() not in {"human", "user"}:
+                continue
+            value = turn.get("value")
+            if not isinstance(value, str):
+                continue
+            cleaned = (
+                value.replace(DEFAULT_IM_START_TOKEN, "")
+                .replace(DEFAULT_IM_END_TOKEN, "")
+                .replace(DEFAULT_IMAGE_TOKEN, "")
+                .strip()
+            )
+            if cleaned:
+                return cleaned
+    raise KeyError(
+        "Sample does not expose a usable routing text field; "
+        f"available keys: {sorted(sample.keys())}"
+    )
 
 
 def build_prompt(question_text, model_config, conv_mode):
@@ -274,7 +329,38 @@ def extract_spectral_features(model, image_processor, samples):
     return clip_image_features.float(), spectral_features.float()
 
 
-def compute_task_prototypes(args, model, image_processor, output_dir):
+def extract_text_anchor_features(model, tokenizer, samples, conv_mode):
+    prompts = [
+        build_prompt(extract_sample_query_text(sample), model.config, conv_mode)
+        for sample in samples
+    ]
+    input_ids_batch = build_input_id_batch(prompts, tokenizer)
+    clip_text_inputs = build_clip_text_inputs(model, tokenizer, input_ids_batch)
+    with torch.inference_mode():
+        text_features = model.get_text_tower()(clip_text_inputs.to(model.device))
+        text_anchor_features = model._extract_text_activation_index(text_features)
+    return text_anchor_features.float()
+
+
+def _build_offline_anchor_bank(raw_bank, config, branch_prefix):
+    return build_task_anchor_bank(
+        raw_bank,
+        remove_global_mean=bool(
+            config.get("offline_anchor_remove_global_mean", True)
+        ),
+        contrast_weight=float(
+            config.get(f"offline_{branch_prefix}_anchor_contrast_weight", 0.0)
+        ),
+        hard_negative_top_k=int(
+            config.get("offline_anchor_negative_top_k", 1)
+        ),
+        preserve_mean_weight=float(
+            config.get("offline_anchor_preserve_mean_weight", 0.0)
+        ),
+    )
+
+
+def compute_task_prototypes(args, model, image_processor, tokenizer, output_dir):
     tasks = get_tasks(args.benchmark)
     prototype_cache = (
         Path(args.prototype_cache)
@@ -286,15 +372,18 @@ def compute_task_prototypes(args, model, image_processor, output_dir):
         return payload, prototype_cache
 
     task_names = []
-    prototype_list = []
+    image_mean_list = []
+    text_mean_list = []
     counts = []
+    config = dict(model.relation_routing_config)
     for task in tasks:
         records = load_json(task["train_path"])
         if args.prototype_limit > 0:
             records = records[: args.prototype_limit]
         for sample in records:
             sample["_image_folder"] = task["image_folder"]
-        running_sum = None
+        running_image_sum = None
+        running_text_sum = None
         sample_count = 0
         progress = tqdm(
             range(0, len(records), args.prototype_batch_size),
@@ -307,22 +396,52 @@ def compute_task_prototypes(args, model, image_processor, output_dir):
                 image_processor,
                 batch,
             )
-            if running_sum is None:
-                running_sum = torch.zeros(
+            text_anchor_features = extract_text_anchor_features(
+                model,
+                tokenizer,
+                batch,
+                args.conv_mode,
+            )
+            if running_image_sum is None:
+                running_image_sum = torch.zeros(
                     spectral_features.shape[-1],
                     dtype=torch.float32,
                 )
-            running_sum += spectral_features.cpu().sum(dim=0)
+            if running_text_sum is None:
+                running_text_sum = torch.zeros(
+                    text_anchor_features.shape[-1],
+                    dtype=torch.float32,
+                )
+            running_image_sum += spectral_features.cpu().sum(dim=0)
+            running_text_sum += text_anchor_features.cpu().sum(dim=0)
             sample_count += spectral_features.shape[0]
-        prototype = running_sum / max(sample_count, 1)
+        image_mean = running_image_sum / max(sample_count, 1)
+        text_mean = running_text_sum / max(sample_count, 1)
         task_names.append(task["task_name"])
-        prototype_list.append(prototype)
+        image_mean_list.append(image_mean)
+        text_mean_list.append(text_mean)
         counts.append(sample_count)
+
+    image_raw_bank = torch.stack(image_mean_list, dim=0)
+    text_raw_bank = torch.stack(text_mean_list, dim=0)
+    image_anchor_bank = _build_offline_anchor_bank(
+        image_raw_bank,
+        config,
+        "image",
+    )
+    text_anchor_bank = _build_offline_anchor_bank(
+        text_raw_bank,
+        config,
+        "text",
+    )
 
     payload = {
         "task_names": task_names,
         "counts": counts,
-        "prototypes": torch.stack(prototype_list, dim=0),
+        "prototypes": image_anchor_bank,
+        "text_anchors": text_anchor_bank,
+        "image_raw_means": image_raw_bank,
+        "text_raw_means": text_raw_bank,
         "metadata": {
             "benchmark": args.benchmark,
             "model_path": args.model_path,
@@ -332,6 +451,21 @@ def compute_task_prototypes(args, model, image_processor, output_dir):
             "spectral_low_bins": model.relation_routing_config["spectral_low_bins"],
             "spectral_high_bins": model.relation_routing_config["spectral_high_bins"],
             "prototype_limit": args.prototype_limit,
+            "offline_anchor_remove_global_mean": bool(
+                config.get("offline_anchor_remove_global_mean", True)
+            ),
+            "offline_anchor_negative_top_k": int(
+                config.get("offline_anchor_negative_top_k", 1)
+            ),
+            "offline_anchor_preserve_mean_weight": float(
+                config.get("offline_anchor_preserve_mean_weight", 0.0)
+            ),
+            "offline_image_anchor_contrast_weight": float(
+                config.get("offline_image_anchor_contrast_weight", 0.0)
+            ),
+            "offline_text_anchor_contrast_weight": float(
+                config.get("offline_text_anchor_contrast_weight", 0.0)
+            ),
         },
     }
     prototype_cache.parent.mkdir(parents=True, exist_ok=True)
@@ -348,6 +482,7 @@ def apply_spectral_prototypes(model, payload, benchmark=None):
         )
     tasks = get_tasks(benchmark_name)
     prototypes = payload["prototypes"]
+    text_anchors = payload.get("text_anchors")
     counts = payload["counts"]
     if prototypes.shape[0] < len(tasks):
         raise ValueError(
@@ -367,6 +502,20 @@ def apply_spectral_prototypes(model, payload, benchmark=None):
                 dtype=model.spectral_image_boundary[task_id].dtype,
             )
         )
+        if text_anchors is not None:
+            model.text_anchors[task_id].data.copy_(
+                text_anchors[task_id].to(
+                    device=model.device,
+                    dtype=model.text_anchors[task_id].dtype,
+                ).unsqueeze(0)
+            )
+            model.text_boundary[task_id].data.copy_(
+                torch.tensor(
+                    [float(counts[task_id])],
+                    device=model.device,
+                    dtype=model.text_boundary[task_id].dtype,
+                )
+            )
 
 
 def init_stage_stats(active_experts):
@@ -374,12 +523,21 @@ def init_stage_stats(active_experts):
         stage: {
             "weight_sum": torch.zeros(active_experts, dtype=torch.float64),
             "top1_counts": torch.zeros(active_experts, dtype=torch.long),
+            "top1_weight_sum": 0.0,
             "entropy_sum": 0.0,
             "margin_sum": 0.0,
             "expected_top1": 0,
         }
         for stage in ("early", "middle", "late")
     }
+
+
+def get_eval_anchor_capacity(model):
+    if hasattr(model, "spectral_image_anchors"):
+        return len(model.spectral_image_anchors)
+    if hasattr(model, "image_anchors"):
+        return len(model.image_anchors)
+    raise AttributeError("Model does not expose image anchor banks for eval analysis.")
 
 
 def finalize_stage_stats(stage_stats, sample_count):
@@ -389,6 +547,7 @@ def finalize_stage_stats(stage_stats, sample_count):
         finalized[stage] = {
             "avg_weight": [round(x, 6) for x in (stats["weight_sum"] / denom).tolist()],
             "top1_rate": [round(x, 6) for x in (stats["top1_counts"].double() / denom).tolist()],
+            "top1_weight_mean": stats["top1_weight_sum"] / denom,
             "entropy_mean": stats["entropy_sum"] / denom,
             "margin_mean": stats["margin_sum"] / denom,
             "expected_expert_top1_rate": stats["expected_top1"] / denom,
@@ -403,7 +562,7 @@ def evaluate_task(model, image_processor, tokenizer, task, args):
     for sample in records:
         sample["_image_folder"] = task["image_folder"]
 
-    active_experts = max(1, min(int(model.expert_num), len(model.image_anchors)))
+    active_experts = max(1, min(int(model.expert_num), get_eval_anchor_capacity(model)))
     model.ensure_role_bank_initialized(active_experts)
     stage_stats = init_stage_stats(active_experts)
     task_score_sum = torch.zeros(active_experts, dtype=torch.float64)
@@ -412,6 +571,11 @@ def evaluate_task(model, image_processor, tokenizer, task, args):
     task_score_entropy_sum = 0.0
     task_score_expected_top1 = 0
 
+    stage_plan_keys = {
+        "early": "early_basis",
+        "middle": "middle_basis",
+        "late": "late_basis",
+    }
     progress = tqdm(
         range(0, len(records), args.eval_batch_size),
         desc=f"eval:{task['task_name']}",
@@ -419,7 +583,7 @@ def evaluate_task(model, image_processor, tokenizer, task, args):
     for start in progress:
         batch = records[start : start + args.eval_batch_size]
         prompts = [
-            build_prompt(sample["text"], model.config, args.conv_mode)
+            build_prompt(extract_sample_query_text(sample), model.config, args.conv_mode)
             for sample in batch
         ]
         input_ids_batch = build_input_id_batch(prompts, tokenizer)
@@ -431,9 +595,12 @@ def evaluate_task(model, image_processor, tokenizer, task, args):
         )
         with torch.inference_mode():
             text_features = model.get_text_tower()(clip_text_inputs.to(model.device))
+            text_activation_features = model._extract_text_activation_index(
+                text_features
+            )
             task_scores = model._compute_shared_task_scores(
                 image_guide_features=spectral_features.to(model.device),
-                text_guide_features=text_features,
+                text_guide_features=text_activation_features,
                 active_experts=active_experts,
             )
         if task_scores.ndim == 1:
@@ -442,7 +609,9 @@ def evaluate_task(model, image_processor, tokenizer, task, args):
         for row_idx in range(task_scores.shape[0]):
             sample_scores = task_scores[row_idx].float()
             image_summary = model._summarize_guide_features(spectral_features[row_idx].to(model.device))
-            text_summary = model._summarize_guide_features(text_features[row_idx])
+            text_summary = model._summarize_guide_features(
+                text_activation_features[row_idx]
+            )
             route_plan = model._build_progressive_route_plan(
                 active_experts,
                 sample_scores,
@@ -466,9 +635,10 @@ def evaluate_task(model, image_processor, tokenizer, task, args):
             )
 
             for stage in ("early", "middle", "late"):
-                weights = route_plan[stage].detach().cpu().float()
+                weights = route_plan[stage_plan_keys[stage]].detach().cpu().float()
                 stage_stats[stage]["weight_sum"] += weights.double()
                 stage_stats[stage]["top1_counts"][int(torch.argmax(weights).item())] += 1
+                stage_stats[stage]["top1_weight_sum"] += float(weights.max().item())
                 stage_stats[stage]["expected_top1"] += int(
                     int(torch.argmax(weights).item()) == task["task_id"]
                 )
@@ -574,6 +744,7 @@ def main():
         text_tower=args.text_tower,
     )
     model.eval()
+    maybe_configure_spectral_pca(model, args.model_path)
     routing_override = maybe_load_routing_config(args.routing_config_json)
     if routing_override:
         model.configure_relation_routing(**routing_override)
@@ -582,6 +753,7 @@ def main():
         args,
         model,
         image_processor,
+        tokenizer,
         output_dir,
     )
     apply_spectral_prototypes(model, prototype_payload, benchmark=args.benchmark)
@@ -590,7 +762,8 @@ def main():
     for task in tasks:
         task_reports.append(evaluate_task(model, image_processor, tokenizer, task, args))
 
-    active_experts = max(1, min(int(model.expert_num), len(model.image_anchors)))
+    active_experts = max(1, min(int(model.expert_num), get_eval_anchor_capacity(model)))
+    active_roles = int(model._get_active_role_count())
     report = {
         "date": str(date.today()),
         "benchmark": args.benchmark,
@@ -602,6 +775,7 @@ def main():
         "prototype_limit": args.prototype_limit,
         "eval_limit": args.eval_limit,
         "active_experts": active_experts,
+        "active_role_count": active_roles,
         "routing_config": dict(model.relation_routing_config),
         "prototype_counts": prototype_payload["counts"],
         "tasks": task_reports,

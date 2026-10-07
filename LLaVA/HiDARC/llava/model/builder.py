@@ -22,6 +22,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, AutoConfig, BitsAn
 import torch
 from llava.model import *
 from llava.constants import DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
+from .hidarc_final import FIXED_HIDARC_KEYS
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 WORKSPACE_ROOT = os.path.abspath(os.path.join(PROJECT_ROOT, "..", ".."))
@@ -265,9 +266,11 @@ def load_pretrained_model(
     num_task=10,
     text_tower=None,
     routing_config_path=None,
-    stage1_band_schedule_path=None,
     **kwargs,
 ):
+    # Older launchers may still pass these names.  They are intentionally
+    # ignored: HiDARC routing and stage bands are fixed in the model code.
+    kwargs.pop("stage1_band_schedule_path", None)
     kwargs = {"device_map": device_map, **kwargs}
     checkpoint_dir = os.path.abspath(os.path.expanduser(model_path))
     is_local_checkpoint_dir = os.path.isdir(checkpoint_dir)
@@ -281,6 +284,8 @@ def load_pretrained_model(
     cfg_pretrained = None
     if is_local_checkpoint_dir and os.path.exists(os.path.join(checkpoint_dir, "config.json")):
         cfg_pretrained = _load_local_llava_config(checkpoint_dir)
+        if not getattr(cfg_pretrained, "hidarc_protocol", None):
+            cfg_pretrained.hidarc_protocol = "UCIT" if int(num_task) == 6 else "MLLM-DCL"
     # Checkpoints created on another host can retain an absolute vision-tower
     # path.  Keep those checkpoints immutable and permit the launcher to
     # supply the equivalent local model directory explicitly.
@@ -370,11 +375,11 @@ def load_pretrained_model(
 
             adapter_kind = _read_adapter_config(model_path).get("peft_type")
             if adapter_kind == "MOE_LORA_CoIN":
-                import HiDESC.peft.tuners.lora as _hidesc_lora
+                import HiDARC.peft.tuners.lora as _hidesc_lora
                 sys.modules["CoIN.peft.tuners.lora"] = _hidesc_lora
                 from CoIN.peft import PeftModel, TaskType, get_peft_model, WEIGHTS_NAME, set_peft_model_state_dict
             else:
-                from HiDESC.peft import PeftModel, TaskType, get_peft_model, HiDeMOELoraConfig, WEIGHTS_NAME, set_peft_model_state_dict
+                from HiDARC.peft import PeftModel, TaskType, get_peft_model, HiDeMOELoraConfig, WEIGHTS_NAME, set_peft_model_state_dict
             # else:
             #     from peft import PeftModel
             print('Loading LoRA weights...')
@@ -462,23 +467,11 @@ def load_pretrained_model(
                     .item()
                 )
             )
-            force_role_bank_rebuild = os.environ.get(
-                "HIDESC_FORCE_ROLE_BANK_REBUILD", "0"
-            ).strip().lower() in {"1", "true", "yes", "on"}
-            if role_bank_is_complete and not force_role_bank_rebuild:
+            if role_bank_is_complete:
                 model._role_memory_reset_applied = True
                 print(
-                    "HiDESC eval preserving loaded role bank:",
+                    "HiDARC eval preserving loaded role bank:",
                     f"active_role_count={loaded_active_roles}",
-                    f"effective_num_task={effective_num_task}",
-                )
-            elif role_bank_is_complete and force_role_bank_rebuild:
-                # Keep injected task anchors, but allow the first forward to
-                # clear the loaded role tensors and rebuild them one-pass.
-                model._role_memory_reset_applied = False
-                print(
-                    "HiDESC eval forcing one-pass role-bank rebuild from task anchors:",
-                    f"loaded_active_role_count={loaded_active_roles}",
                     f"effective_num_task={effective_num_task}",
                 )
             print(
@@ -593,15 +586,20 @@ def load_pretrained_model(
                 text_tower_model.load_model()
             text_tower_model.to(device=device, dtype=torch.float16)
         routing_config = _load_json_dict(routing_config_path, "routing config")
-        if routing_config is not None and hasattr(model, "configure_relation_routing"):
-            model.configure_relation_routing(**routing_config)
-        if stage1_band_schedule_path is not None:
-            if not hasattr(model, "set_stage1_band_schedule"):
-                raise RuntimeError(
-                    "Loaded model does not support stage1 band schedule injection."
-                )
-            model.set_stage1_band_schedule(
-                schedule_path=_resolve_repo_path(stage1_band_schedule_path)
+        if routing_config:
+            relation_owner = model
+            for _ in range(3):
+                if hasattr(relation_owner, "relation_routing_config"):
+                    break
+                relation_owner = getattr(relation_owner, "base_model", relation_owner)
+                relation_owner = getattr(relation_owner, "model", relation_owner)
+            if not hasattr(relation_owner, "relation_routing_config"):
+                raise RuntimeError("Loaded HiDARC model has no relation routing state.")
+            for key, value in routing_config.items():
+                if key not in FIXED_HIDARC_KEYS and key != "stage1_band_schedule_path":
+                    relation_owner.relation_routing_config[key] = value
+            relation_owner.config.relation_routing_config = dict(
+                relation_owner.relation_routing_config
             )
         if hasattr(model, "_get_active_role_count") and hasattr(model, "role_task_count"):
             with torch.no_grad():

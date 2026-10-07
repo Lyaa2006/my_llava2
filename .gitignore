@@ -81,5 +81,53 @@ docs/experiment*_l_focus_logic_smoke/
 docs/hierarchical_boundary_outputs*/
 docs/hierarchical_boundary_sweeps*/
 
+# --- Local research scratch space (new files stay local) ---
+/analysis/
+/artifacts/
+/remote_checkpoints/
+/summary/
+/tmp/
+/tmp_runtime_sync/
+
+# --- HiDARC generated probe/routing artifacts ---
+/configs/probe_configs/
+/configs/routing_configs/
+/new_experiments_1/
+/figures/
+/ablation/
+/configs/local/
+/configs/probe_configs/
+/configs/data_configs/CL-VISTA/
+/configs/data_configs/General_benchmark/
+
 # --- Nested git dirs (vendored repos) ---
 **/.git/
+
+# --- New top-level files are limited to the public repository layout ---
+/*
+!/.gitignore
+!/.env.example
+!/README.md
+!/InternVL/
+!/InternVL/**
+!/LLaVA/
+!/LLaVA/**
+!/configs/
+!/configs/**
+!/examples/
+!/examples/**
+
+# --- New method files: keep only HiDARC additions ---
+/InternVL/*/
+!/InternVL/HiDARC/
+!/InternVL/HiDARC/**
+/LLaVA/*/
+!/LLaVA/HiDARC/
+!/LLaVA/HiDARC/**
+/configs/train_configs/*/
+!/configs/train_configs/HiDARC/
+!/configs/train_configs/HiDARC/**
+/configs/routing_configs/
+/configs/model_configs/*_remote.json
+/configs/local/
+/configs/probe_configs/

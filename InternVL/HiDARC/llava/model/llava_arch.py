@@ -30,8 +30,16 @@ from .relation_text_utils import build_text_activation_index
 
 from llava.constants import IGNORE_INDEX, IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_PATCH_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
 
-from HiDESC.peft.tuners import HiDeMOELoraModel
+from HiDARC.peft.tuners import HiDeMOELoraModel
 from collections import deque
+
+
+_FINAL_STAGE1_BAND_SCHEDULE = {
+    "early_core": (1, 11), "b1_band": (12, 14), "middle_core": (15, 26),
+    "b2_band": (27, 29), "late_core": (30, 32), "b1_core": (14, 14),
+    "b2_core": (28, 28),
+    "alpha_by_layer": {"12": 0.25, "13": 0.5, "14": 0.75, "27": 0.25, "28": 0.5, "29": 0.75},
+}
 
 
 class LlavaMetaModel:
@@ -160,6 +168,12 @@ class LlavaMetaForCausalLM(ABC):
         )
 
     def _get_relation_config(self):
+        configured = getattr(self, "relation_routing_config", None)
+        if not isinstance(configured, dict):
+            raise RuntimeError(
+                "HiDARC requires an experiment role/activation profile in the model config."
+            )
+        return configured
         return getattr(
             self,
             "relation_routing_config",
@@ -230,39 +244,8 @@ class LlavaMetaForCausalLM(ABC):
             },
         )
 
-    def load_stage1_band_schedule(self, schedule_path):
-        if schedule_path is None:
-            return None
-        schedule_path = os.path.abspath(os.path.expanduser(schedule_path))
-        with open(schedule_path, "r", encoding="utf-8") as f:
-            schedule = json.load(f)
-        if not isinstance(schedule, dict):
-            raise TypeError(
-                f"Stage1 band schedule must be a JSON object, got {type(schedule)!r}"
-            )
-        return schedule
-
-    def set_stage1_band_schedule(self, schedule=None, schedule_path=None):
-        if schedule is not None and schedule_path is not None:
-            raise ValueError("Provide either schedule or schedule_path, not both.")
-        if schedule_path is not None:
-            schedule = self.load_stage1_band_schedule(schedule_path)
-        self.stage1_band_schedule = schedule
-        if schedule_path is not None:
-            self._get_relation_config()["stage1_band_schedule_path"] = schedule_path
-
     def _get_stage1_band_schedule(self):
-        if not bool(self._get_relation_config().get("use_stage1_band_schedule_eval", True)):
-            return None
-        schedule = getattr(self, "stage1_band_schedule", None)
-        if isinstance(schedule, dict):
-            return schedule
-        schedule_path = self._get_relation_config().get("stage1_band_schedule_path")
-        if schedule_path:
-            schedule = self.load_stage1_band_schedule(schedule_path)
-            self.stage1_band_schedule = schedule
-            return schedule
-        return None
+        return _FINAL_STAGE1_BAND_SCHEDULE
 
     def _get_stage1_band_region(self, layer_idx):
         schedule = self._get_stage1_band_schedule()
@@ -546,37 +529,17 @@ class LlavaMetaForCausalLM(ABC):
         )
         old_count = boundary.detach().float().reshape(())
         new_count = old_count + features.shape[0]
-        batch_summary = self._safe_normalize(features.mean(dim=0))
-        if float(old_count.item()) <= 0.0:
-            updated = batch_summary
-        else:
-            decay = float(
-                self._get_relation_config().get("spectral_image_ema_decay", 0.8)
-            )
-            decay = max(0.0, min(decay, 0.9999))
-            updated = self._safe_normalize(
-                decay * prototype.detach().float().reshape(-1)
-                + (1.0 - decay) * batch_summary
-            )
+        old_sum = prototype.detach().float().reshape(-1) * old_count
+        updated = (old_sum + features.sum(dim=0)) / new_count.clamp_min(1.0)
         prototype.data.copy_(updated.reshape_as(prototype).to(prototype.dtype))
         boundary.data.copy_(new_count.reshape_as(boundary).to(boundary.dtype))
 
     def _update_running_text_activation_index(self, prototype, boundary, features):
         activation_features = self._extract_text_activation_index(features.detach().float())
-        batch_summary = self._safe_normalize(activation_features.mean(dim=0))
         old_count = boundary.detach().float().reshape(())
         new_count = old_count + activation_features.shape[0]
-        if float(old_count.item()) <= 0.0:
-            updated = batch_summary
-        else:
-            decay = float(
-                self._get_relation_config().get("text_activation_ema_decay", 0.8)
-            )
-            decay = max(0.0, min(decay, 0.9999))
-            updated = self._safe_normalize(
-                decay * prototype.detach().float().reshape(-1)
-                + (1.0 - decay) * batch_summary
-            )
+        old_sum = prototype.detach().float().reshape(-1) * old_count
+        updated = (old_sum + activation_features.sum(dim=0)) / new_count.clamp_min(1.0)
         prototype.data.copy_(updated.reshape_as(prototype).to(prototype.dtype))
         boundary.data.copy_(new_count.reshape_as(boundary).to(boundary.dtype))
         return activation_features
@@ -1343,7 +1306,7 @@ class LlavaMetaForCausalLM(ABC):
         pair_weight = float(
             max(0.0, min(1.0, config.get("role_assignment_pair_weight", 0.50)))
         )
-        assignment_mode = config.get("role_assignment_score_mode", "member_max")
+        assignment_mode = "member_max"
         member_top_k = int(config.get("role_member_top_k", 2))
         member_temperature = float(
             config.get("role_assignment_member_temperature", 0.35)
@@ -1487,24 +1450,6 @@ class LlavaMetaForCausalLM(ABC):
             config.get("routing_late_role_strength", 0.06),
             config.get("routing_late_role_uniform_mix", 0.0),
         )
-        # Keep late routing soft. HIDESC_FORCE_LATE_EXPERT remains an explicit
-        # diagnostic override for experiments that intentionally pin one expert.
-        force_late_expert = os.environ.get("HIDESC_FORCE_LATE_EXPERT", "").strip()
-        if force_late_expert:
-            try:
-                forced_idx = int(force_late_expert)
-            except ValueError as exc:
-                raise ValueError(
-                    "HIDESC_FORCE_LATE_EXPERT must be an integer expert index, "
-                    f"got {force_late_expert!r}."
-                ) from exc
-            if not 0 <= forced_idx < active_experts:
-                raise ValueError(
-                    "HIDESC_FORCE_LATE_EXPERT is outside the active expert range: "
-                    f"{forced_idx} not in [0, {active_experts - 1}]."
-                )
-            late = torch.zeros_like(late)
-            late[forced_idx] = 1.0
         candidate_experts = [int(idx) for idx in torch.nonzero(late > 0, as_tuple=False).flatten().tolist()]
         per_layer = []
         for layer_idx in range(len(self.model.layers)):
@@ -1867,28 +1812,6 @@ class LlavaMetaForCausalLM(ABC):
                 text_summary,
             )
             self._apply_relation_weights_to_experts(route_plan)
-            if self._should_log_eval_role_activation():
-                active_roles = min(
-                    self._get_active_role_count(),
-                    self._max_supported_role_slots(),
-                )
-                role_members = {
-                    str(role_id): self._role_member_tasks(role_id, active_experts)
-                    for role_id in range(active_roles)
-                }
-                record = self._build_eval_role_activation_record(
-                    active_experts=active_experts,
-                    role_scores=route_plan.get(
-                        "role_scores",
-                        torch.empty(0, device=task_scores.device),
-                    ),
-                    candidate_experts=route_plan.get("candidate_experts", []),
-                    role_members=role_members,
-                    route_plan=route_plan,
-                )
-                if record is not None:
-                    self._emit_eval_role_activation_record(record)
-
 
         # TODO: image start / end is not implemented here to support pretraining.
         if getattr(self.config, 'tune_mm_mlp_adapter', False) and getattr(self.config, 'mm_use_im_start_end', False):

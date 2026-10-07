@@ -488,8 +488,7 @@ role_score[r] =
 
 ```text
 _build_progressive_route_plan()
-_build_early_route_weights()
-_build_middle_route_weights()
+_build_role_conditioned_task_weights()
 _build_sparse_relation_weights()
 ```
 

@@ -2,12 +2,19 @@
 
 日期：2026-08-13
 
+更新：2026-08-16
+
+本次更新重点同步两类最新改动：
+
+1. `text` 侧 prototype 不再直接聚合 raw pooled text embedding，而是改成 `text activation index -> EMA anchor -> offline contrastive bank`。
+2. `eval` 侧不再用旧版 “late top-k task sparse routing” 作为主描述，而是改成 `role prior + task score` 的三阶段 route basis，再通过 `stage1 band schedule` 做逐层插值。
+
 ## 1. 结论先行
 
 HiDESC 不是单纯的“多专家 LoRA”，而是一个把持续学习拆成三件事的统一框架：
 
 1. 训练时，用固定 `description cache` 作为跨任务语义锚点，联合优化 `CE + L_struct + L_align`。
-2. 推理时，用 `early / middle / late` 三阶段 progressive routing 做 role-aware 专家协同。
+2. 推理时，用 `early / middle / late` 三阶段 progressive routing 做 role-aware 专家协同，其中 text 路由信号来自频域化后的 `text activation prototype`。
 3. 证据上，用两个前置实验分别支撑 `L_focus` 的必要性和 `b1/b2` 阶段边界的合理性。
 
 对应实现分别在：
@@ -133,7 +140,7 @@ HiDESC eval 不是依赖任务 id，而是先从图像与文本摘要里算 `tas
 
 核心路径在 [llava_arch.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py>)：
 
-- `_score_tasks()`：基于 `spectral_image_anchors + text_anchors + history prior` 计算 task logits
+- `_compute_shared_task_scores()`：基于 `spectral_image_anchors + text_anchors + history prior` 计算 task logits
 - `_score_roles()`：基于 `role_text_prototypes + role_spectral_prototypes + role prior` 计算 role logits
 - `_build_progressive_route_plan()`：把 early/middle/late 三套 basis 组装成逐层 route plan
 
@@ -144,12 +151,97 @@ HiDESC eval 不是依赖任务 id，而是先从图像与文本摘要里算 `tas
 其中：
 
 - `s_t^{img}` 来自当前样本的频域图像描述子与 `spectral_image_anchors[t]` 的相似度
-- `s_t^{txt}` 来自当前文本 guide feature 与 `text_anchors[t]` 的相似度
+- `s_t^{txt}` 来自当前文本的 `activation index` 与 `text_anchors[t]` 的相似度
 - `s_t^{hist}` 来自 `expert_usage_prior[t]`
 
-对应实现见 [llava_arch.py#700](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#700>)。
+这里现在必须明确区分两件事：
 
-### 3.1.1 FFT prototype 的计算
+1. `text_guide_features` 仍然来自 text tower。
+2. 真正写入 `text_anchors`、也真正参与 eval 相似度计算的，不再是 raw pooled text feature，而是 `_extract_text_activation_index()` 产出的频域化 text descriptor。
+
+对应实现见 [llava_arch.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py>) 与新增的 [relation_text_utils.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/relation_text_utils.py>)。
+
+### 3.1.1 text prototype 的最新聚合方式
+
+当前 `text` 侧 anchor 的真实实现是：
+
+1. 先取每个样本的 text tower 输出 `h \in \mathbb{R}^{D}`。
+2. 去掉 DC 分量：
+
+`\tilde{h} = h - mean(h)`
+
+3. 对 channel 维做一维 FFT：
+
+`F = FFT(\tilde{h})`
+
+4. 用频率绝对值构造高通权重：
+
+`w_k = \left(\frac{|freq_k|}{\max_j |freq_j| + \epsilon}\right)^p`
+
+其中 `p = text_activation_highpass_exponent`，当前默认 `0.75`。
+
+5. 对加权频谱 `F^{hp}_k = w_k F_k`，分别取：
+
+- `log(1 + |F^{hp}|)`
+- `Re(F^{hp})`
+- `Im(F^{hp})`
+
+6. 三个分支先各自归一化，再做加权求和并归一化：
+
+`z_{txt} = norm(\alpha_{mag} norm(log(1 + |F^{hp}|)) + \alpha_{real} norm(Re(F^{hp})) + \alpha_{imag} norm(Im(F^{hp})))`
+
+当前主配置是：
+
+- `text_activation_magnitude_weight = 0.0`
+- `text_activation_real_weight = 0.5`
+- `text_activation_imag_weight = 0.5`
+- `text_activation_use_fftshift = true`
+
+所以这轮调整的关键点是：`text` 路由更强调“去模板化之后的高频激活形状”，而不是直接保留原始 pooled embedding 的低频均值信息。
+
+训练或 cache 抽取时，`text_anchors[task_id]` 也不再做简单 running mean，而是做 batch summary 后的 EMA：
+
+`a_t^{new} = norm(\delta a_t^{old} + (1-\delta)\bar{z}_{txt})`
+
+其中：
+
+- `\bar{z}_{txt}` 是当前 batch 的 mean activation index
+- `\delta = text_activation_ema_decay`，当前默认 `0.8`
+
+对应实现见 [relation_text_utils.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/relation_text_utils.py#14>) 与 [llava_arch.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#504>)。
+
+### 3.1.2 offline text/image anchor bank 的补充聚合
+
+如果走离线 prototype cache 链路，当前不是把每个 task 的均值直接塞回 checkpoint，而是会额外做一次 task-bank 级别的 refine，入口在 [analyze_hidesc_spectral_routing.py](</mnt/lyaa/MCITlib/scripts/analyze_hidesc_spectral_routing.py>) 与 [inject_hidesc_prototype_cache.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/scripts/MCITlib/inject_hidesc_prototype_cache.py>)。
+
+离线 bank 的逻辑是：
+
+1. 先对每个 task 求 raw mean，得到 `u_t`。
+2. 做 row normalize。
+3. 如果启用 `offline_anchor_remove_global_mean=true`，则先去全局 task mean：
+
+`\tilde{u}_t = norm(u_t - mean_j(u_j))`
+
+4. 如果启用 contrastive refine，则减掉最相近 hard negatives 的加权混合：
+
+`\hat{u}_t = norm(\tilde{u}_t - \lambda \sum_{j \in \mathcal{N}_t} \pi_{tj} \tilde{u}_j)`
+
+5. 最后再用 `offline_anchor_preserve_mean_weight` 混回一部分原始方向。
+
+当前 `UCIT` 主配置里：
+
+- `offline_anchor_remove_global_mean = true`
+- `offline_anchor_negative_top_k = 2`
+- `offline_anchor_preserve_mean_weight = 0.15`
+- `offline_image_anchor_contrast_weight = 0.40`
+- `offline_text_anchor_contrast_weight = 0.20`
+
+这意味着最新版本的 text prototype 聚合不是单点改动，而是分成两层：
+
+1. 样本内：`raw text feature -> activation index`
+2. task 间：`EMA/task mean -> global-mean removal -> hard-negative contrast refine`
+
+### 3.1.3 FFT image prototype 的计算
 
 HiDESC 不是用全局 image embedding 做视觉记忆，而是先把 patch grid 变成频域描述子。实现是 `_extract_image_spectral_descriptor()`，见 [llava_arch.py#342](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#342>)。
 
@@ -185,20 +277,50 @@ HiDESC 不是用全局 image embedding 做视觉记忆，而是先把 patch grid
 
 ### 3.2 三阶段路由
 
-默认配置写在 [llava_llama.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/language_model/llava_llama.py#110>)，包括：
+构造函数里的默认值写在 [llava_llama.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/language_model/llava_llama.py#110>)，当前 `UCIT` eval 主路径使用 prototype-only role gate 和 role-constrained late expert selection，核心配置是 [ucit_role_new_partition_eval_late_role_prototype_only.json](</mnt/lyaa/MCITlib/configs/routing_configs/HiDESC/ucit_role_new_partition_eval_late_role_prototype_only.json>)。
+
+当前 eval 侧最关键的几个开关是：
 
 - `routing_early_layers = 16`
 - `routing_middle_layers = 13`
 - `routing_late_layers = 3`
-- `routing_early_mode = task_softmax_within_role`
-- `routing_middle_role_gamma = 1.15`
-- `routing_late_top_k = 2`
+- `routing_score_normalization = zscore`
+- `use_stage1_band_schedule_eval = true`
+- `eval_use_role_spectral_prototype = true`
+- `eval_disable_role_image_prototype = true`
+- `routing_late_top_k = 1`
 
-代码里真正的层级切分由 `_get_layer_stage()` 完成，band 过渡则由 `stage1_band_schedule` 接管，见 [#1231](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1231>) 和 [llava_stage1_band_eval_schedule.json](</mnt/lyaa/MCITlib/configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json#1>)。
+但更重要的是，这轮之后文档不该再把 early/middle/late 写成三套彼此独立的 heuristic，而应该写成统一的 `role-prior task routing`：
+
+1. 先算 role scores。
+2. 再把 role scores 变成 task-level role support。
+3. 最后把 `task scores` 与 `log(role support)` 融合成每个 stage 的 route basis。
+
+也就是对某个 stage，可写成：
+
+`w_t^{stage} = softmax(\frac{s_t}{\tau_{task}} + \gamma_{role}\log(q_t + \epsilon))`
+
+其中：
+
+- `s_t` 是 task score
+- `q_t` 是由 role weights 扩散到 member tasks 后得到的 role support
+- `\tau_{task}` 是 stage-specific task temperature
+- `\gamma_{role}` 是 stage-specific role strength
+
+所以当前主路径已经不再是“late 阶段直接对 task logits 做 top-k sparse selection”的旧描述。现在 early/middle/late 三个 basis 都统一由 `_build_role_conditioned_task_weights()` 生成，区别主要来自：
+
+- `routing_*_role_temperature`
+- `routing_*_task_temperature`
+- `routing_*_role_strength`
+- `routing_role_task_floor`
+
+只有 `candidate_experts` 这一步会把 `late_basis` 的 `argmax` 记下来作为最终候选 expert 列表，因此“late 更尖锐、更接近单专家”仍然成立，但它不再等价于旧版的硬 top-k 稀疏权重。
+
+代码里真正的层级切分由 `_get_layer_stage()` 完成，band 过渡则由 `stage1_band_schedule` 接管；更准确地说，当前实现是在 `route weights` 上做 band 内插值，而不是混输出 logits，见 [llava_arch.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1429>) 和 [llava_stage1_band_eval_schedule.json](</mnt/lyaa/MCITlib/configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json#1>)。
 
 ### 3.2.1 role 是如何划分的
 
-role 不是外部标签，而是训练过程中根据 task anchors 逐步归纳出来的 latent grouping。
+role 不是外部标签，而是训练过程中根据 task anchors 逐步归纳出来的 latent grouping。这里的 `text anchor` 现在应理解为 `text activation anchor`，而不是旧口径下的 raw text pooled prototype。
 
 模型里保存这套记忆的核心张量是：
 
@@ -212,7 +334,7 @@ role 不是外部标签，而是训练过程中根据 task anchors 逐步归纳�
 
 定义见 [llava_llama.py#71](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/language_model/llava_llama.py#71>) 到 [#109](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/language_model/llava_llama.py#109>)。
 
-当一个 task 训练完成后，会调用 `finalize_current_task_role_memory()`，进而进入 `_finalize_current_task_role_memory_impl()`，见 [llava_llama.py#219](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/language_model/llava_llama.py#219>) 和 [llava_arch.py#1445](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1445>)。
+当一个 task 训练完成后，会调用 `finalize_current_task_role_memory()`，进而进入 `_finalize_current_task_role_memory_impl()`，见 [llava_llama.py#219](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/language_model/llava_llama.py#219>) 和 [llava_arch.py#1666](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1666>)。
 
 其逻辑可以概括为：
 
@@ -228,18 +350,32 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 
 其中 `sim` 同时融合 image/text 两个 anchor，相当于 complete-link clustering。
 
-然后 `_assign_roles_from_sample()` 再结合：
+这里还要区分两套阈值口径：
 
-- `role_assignment_min_similarity = 0.68`
-- `role_birth_threshold = 0.55`
-- `role_assignment_margin = 0.10`
-- `role_assignment_pair_weight = 0.25`
+1. 模型构造函数中的默认在线阈值更严格，用于通用运行时初始化。
+2. 当前 `UCIT` 的离线注入 + eval 主配置更宽松，因为它假设 task anchors 已经过离线 bank refine。
 
-决定“并入已有 role”还是“新生 role”，见 [llava_arch.py#1134](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1134>)。
+构造函数默认值是：
+
+- `role_assignment_min_similarity = 0.85`
+- `role_birth_threshold = 0.80`
+- `role_assignment_margin = 0.02`
+- `role_assignment_pair_weight = 0.50`
+
+而当前 `UCIT` eval config 中覆盖为：
+
+- `role_assignment_min_similarity = 0.00`
+- `role_birth_threshold = 0.29`
+- `role_assignment_margin = 0.01`
+- `role_assignment_pair_weight = 0.30`
+
+所以论文口径里更稳妥的说法应是：role assignment 仍是 complete-link 风格的 image/text 双锚兼容性聚类，但实际阈值由具体 eval routing config 决定，而不是固定死在 checkpoint 里。
+
+另外，若是离线注入 prototype cache，注入脚本会先清空旧 role memory，再由 `ensure_role_bank_initialized()` 按新的 task anchors 在运行时重建 role prototypes、membership 与 `active_role_count`，见 [inject_hidesc_prototype_cache.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/scripts/MCITlib/inject_hidesc_prototype_cache.py>) 与 [llava_arch.py#1606](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1606>)。
 
 ### 3.2.2 role prototype 如何更新
 
-当 task 被分配到某个 role 后，真正的 prototype 更新在 `_commit_task_to_roles()` 中完成，见 [llava_arch.py#1330](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1330>)。
+当 task 被分配到某个 role 后，真正的 prototype 更新在 `_commit_task_to_roles()` 中完成，见 [llava_arch.py#1551](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1551>)。
 
 若是新 role：
 
@@ -256,7 +392,7 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 - `w_{tr}` 是 task 对 role 的 membership weight
 - `n_r` 是 `role_task_count[r]`
 
-这正对应 [llava_arch.py#1361](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1361>) 到 [#1382](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1382>)。
+这正对应 [llava_arch.py#1564](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1564>) 到 [#1600](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1600>)。唯一需要更新的理解是：这里的 `task_text_anchor` 与 `role_text_prototype` 都已经处在 `activation index` 空间中。
 
 ### 3.3 stage1 band schedule
 
@@ -270,7 +406,11 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 
 并且在 band 内预先给出离散 `alpha_by_layer`，例如 `15 -> 0.25`、`16/17 -> 0.5`、`18 -> 0.75`，见 [配置文件](</mnt/lyaa/MCITlib/configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json#1>)。
 
-这与代码中的 `_get_stage1_band_region()`、`_get_stage1_band_alpha()`、`_build_progressive_route_plan()` 是一致的。
+这与代码中的 `_get_stage1_band_region()`、`_get_stage1_band_alpha()`、`_build_progressive_route_plan()` 是一致的。当前正确的实现表述应是：
+
+1. 先计算 `early_basis / middle_basis / late_basis`
+2. 再按照 `b1/b2` 的 `alpha_by_layer`，在相邻阶段 basis 之间做 route-weight 插值
+3. band 外不再额外拟合逐层 noisy schedule
 
 ## 4. 前置实验一：Stage 1 边界实验
 
@@ -360,7 +500,7 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 
 1. `b1` 不是硬编码单层，而是 `early -> middle` 的过渡带。
 2. `b2` 同理对应 `middle -> late` 的过渡带。
-3. 所以 eval 中的 route plan 应当使用 band schedule，而不是只用单点边界。
+3. 所以 eval 中的 route plan 应当使用 band schedule，而且插值对象应是 `route weights`，而不是只用单点边界或直接混输出 logits。
 
 ## 5. 前置实验二：`L_focus` 逻辑实验
 
@@ -402,14 +542,18 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 1. Stage 1 边界实验告诉我们，模型内部确实存在稳定的 `early / middle / late` 过渡区。
 2. `L_focus` 实验告诉我们，description 训练里真正有害的是 template-driven drift。
 3. 因此，训练侧要用 `B1` 做对齐，`B2` 做结构约束。
-4. 推理侧要用 `stage1 band schedule` 做 progressive route，而不是手工单点切层。
+4. 推理侧要用 `stage1 band schedule` 做 progressive route，并把 text 侧 prototype 放在 `activation index` 空间中统一建模。
 
 ## 7. 可直接写进论文的表述
 
-> HiDESC is a hierarchical description-aligned continual learning framework for LVLMs. During training, it anchors each task to a fixed description cache and optimizes `CE + B1 alignment + B2 structural regularization`; during inference, it performs task-agnostic progressive collaboration with an `early / middle / late` route plan. Two preliminary studies support this design: Stage 1 boundary analysis shows that the model exhibits a stable transition band around `b1 = 15-18` and a late structural band around `b2 = 29-31`, while the `L_focus` study shows that harmful drift is driven by template-level semantic instability rather than raw update magnitude.
+> HiDESC is a hierarchical description-aligned continual learning framework for LVLMs. During training, it anchors each task to a fixed description cache and maintains both spectral image anchors and FFT-style text activation anchors; during inference, it performs task-agnostic progressive collaboration with role-aware task routing, where stage-specific route bases are interpolated by `b1/b2` band schedules. Two preliminary studies support this design: Stage 1 boundary analysis shows that the model exhibits a stable transition band around `b1 = 15-18` and a late structural band around `b2 = 29-31`, while the `L_focus` study shows that harmful drift is driven by template-level semantic instability rather than raw update magnitude.
 
 ## 8. 复现入口
 
 - 训练：[`LLaVA/HiDESC/scripts/MCITlib/Train/full_HiDESC_from_HiDeTask1.sh`](</mnt/lyaa/MCITlib/LLaVA/HiDESC/scripts/MCITlib/Train/full_HiDESC_from_HiDeTask1.sh>)
+- 离线 prototype 分析：[`scripts/analyze_hidesc_spectral_routing.py`](</mnt/lyaa/MCITlib/scripts/analyze_hidesc_spectral_routing.py>)
+- 离线 prototype 注入：[`LLaVA/HiDESC/scripts/MCITlib/inject_hidesc_prototype_cache.py`](</mnt/lyaa/MCITlib/LLaVA/HiDESC/scripts/MCITlib/inject_hidesc_prototype_cache.py>)
+- UCIT offline smoke eval：[`LLaVA/HiDESC/scripts/MCITlib/Eval_UCIT/run_offline_hidesc_ucit_smoke_eval.sh`](</mnt/lyaa/MCITlib/LLaVA/HiDESC/scripts/MCITlib/Eval_UCIT/run_offline_hidesc_ucit_smoke_eval.sh>)
+- UCIT offline full eval：[`LLaVA/HiDESC/scripts/MCITlib/Eval_UCIT/run_offline_hidesc_ucit_full_eval.sh`](</mnt/lyaa/MCITlib/LLaVA/HiDESC/scripts/MCITlib/Eval_UCIT/run_offline_hidesc_ucit_full_eval.sh>)
 - Stage 1：[`scripts/run_stage1_b1_multiseed.sh`](</mnt/lyaa/MCITlib/scripts/run_stage1_b1_multiseed.sh>)
 - `L_focus`：[`LLaVA/HiDe/scripts/MCITlib/Analysis/experiment2_prelim_parallel.sh`](</mnt/lyaa/MCITlib/LLaVA/HiDe/scripts/MCITlib/Analysis/experiment2_prelim_parallel.sh>)
