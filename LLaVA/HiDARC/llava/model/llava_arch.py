@@ -505,10 +505,22 @@ class LlavaMetaForCausalLM(ABC):
         features = torch.nan_to_num(
             features.detach().float(), nan=0.0, posinf=0.0, neginf=0.0
         )
+        # Routing state is updated outside the optimizer.  Under DDP each rank
+        # otherwise keeps a different local image/text anchor; rank 0 then
+        # saves whichever shard happened to be written.  Aggregate the batch
+        # sum and count so online image anchors have the same semantics as the
+        # text anchor over the complete mini training set.
+        feature_sum = features.sum(dim=0)
+        feature_count = torch.tensor(
+            [features.shape[0]], dtype=feature_sum.dtype, device=feature_sum.device
+        )
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            torch.distributed.all_reduce(feature_sum, op=torch.distributed.ReduceOp.SUM)
+            torch.distributed.all_reduce(feature_count, op=torch.distributed.ReduceOp.SUM)
         old_count = boundary.detach().float().reshape(())
-        new_count = old_count + features.shape[0]
+        new_count = old_count + feature_count.reshape(())
         old_sum = prototype.detach().float().reshape(-1) * old_count
-        updated = (old_sum + features.sum(dim=0)) / new_count.clamp_min(1.0)
+        updated = (old_sum + feature_sum) / new_count.clamp_min(1.0)
         prototype.data.copy_(updated.reshape_as(prototype).to(prototype.dtype))
         boundary.data.copy_(new_count.reshape_as(boundary).to(boundary.dtype))
 
