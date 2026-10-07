@@ -72,10 +72,14 @@ fi
 
 if [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
     VISIBLE_GPU_LIST=$(python3 -c "print(','.join(x.strip() for x in '${CUDA_VISIBLE_DEVICES}'.split(',') if x.strip()))")
-    GPU_NUM=$(python3 -c "print(len([x for x in '${CUDA_VISIBLE_DEVICES}'.split(',') if x.strip()]))")
-    DEEPSPEED_GPU_ARGS=(--include "localhost:$VISIBLE_GPU_LIST")
-    DEEPSPEED_ENV_PREFIX=(env -u CUDA_VISIBLE_DEVICES)
+    # Description cache entries are independent and the metadata manifest is
+    # written only after extraction finishes.  Use one visible GPU so no
+    # second rank can observe a partially populated cache before meta.json is
+    # committed.  Training/evaluation still use all visible GPUs.
     CACHE_GPU_SLOT="${VISIBLE_GPU_LIST%%,*}"
+    GPU_NUM=1
+    DEEPSPEED_GPU_ARGS=(--include "localhost:$CACHE_GPU_SLOT")
+    DEEPSPEED_ENV_PREFIX=(env -u CUDA_VISIBLE_DEVICES)
 else
     GPU_LIST=$(seq -s, 0 $((GPU_NUM - 1)))
     DEEPSPEED_GPU_ARGS=(--include "localhost:$GPU_LIST")
@@ -97,6 +101,7 @@ fi
 mkdir -p "$DESCRIPTION_CACHE_DIR"
 echo "Extracting one-task description cache: $DESCRIPTION_CACHE_DIR"
 echo "Cache source=$DESCRIPTION_CACHE_MODEL_SOURCE, data=$DATA_PATH"
+echo "Cache extraction GPU slot: $CACHE_GPU_SLOT"
 
 CACHE_ARGS=(
     --lora_enable True
