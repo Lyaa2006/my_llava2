@@ -505,22 +505,20 @@ class LlavaMetaForCausalLM(ABC):
         features = torch.nan_to_num(
             features.detach().float(), nan=0.0, posinf=0.0, neginf=0.0
         )
-        # Routing state is updated outside the optimizer.  Under DDP each rank
-        # otherwise keeps a different local image/text anchor; rank 0 then
-        # saves whichever shard happened to be written.  Aggregate the batch
-        # sum and count so online image anchors have the same semantics as the
-        # text anchor over the complete mini training set.
-        feature_sum = features.sum(dim=0)
-        feature_count = torch.tensor(
-            [features.shape[0]], dtype=feature_sum.dtype, device=feature_sum.device
-        )
-        if torch.distributed.is_available() and torch.distributed.is_initialized():
-            torch.distributed.all_reduce(feature_sum, op=torch.distributed.ReduceOp.SUM)
-            torch.distributed.all_reduce(feature_count, op=torch.distributed.ReduceOp.SUM)
         old_count = boundary.detach().float().reshape(())
-        new_count = old_count + feature_count.reshape(())
-        old_sum = prototype.detach().float().reshape(-1) * old_count
-        updated = (old_sum + feature_sum) / new_count.clamp_min(1.0)
+        new_count = old_count + features.shape[0]
+        batch_summary = self._safe_normalize(features.mean(dim=0))
+        if float(old_count.item()) <= 0.0:
+            updated = batch_summary
+        else:
+            decay = float(
+                self._get_relation_config().get("spectral_image_ema_decay", 0.8)
+            )
+            decay = max(0.0, min(decay, 0.9999))
+            updated = self._safe_normalize(
+                decay * prototype.detach().float().reshape(-1)
+                + (1.0 - decay) * batch_summary
+            )
         prototype.data.copy_(updated.reshape_as(prototype).to(prototype.dtype))
         boundary.data.copy_(new_count.reshape_as(boundary).to(boundary.dtype))
 
