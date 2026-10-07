@@ -3,8 +3,6 @@ import torch.nn as nn
 
 from transformers import CLIPVisionModel, CLIPImageProcessor, CLIPVisionConfig, CLIPVisionModelWithProjection
 from transformers import CLIPTextModel, CLIPTextConfig
-from .intern_vit_6b.configuration_intern_vit import InternVisionConfig
-from .intern_vit_6b.modeling_intern_vit import InternVisionModel
 from ..spectral_pca import load_spectral_pca
 
 
@@ -16,6 +14,8 @@ def is_intern_vit_6b_model(vision_tower_name):
 def get_vision_feature_width(vision_tower_name):
     """Return the patch width consumed by HiDESC spectral routing."""
     if is_intern_vit_6b_model(vision_tower_name):
+        from .intern_vit_6b.configuration_intern_vit import InternVisionConfig
+
         return int(InternVisionConfig.from_pretrained(vision_tower_name).hidden_size)
     return int(CLIPVisionConfig.from_pretrained(vision_tower_name).projection_dim)
 
@@ -64,6 +64,8 @@ class CLIPVisionTower(nn.Module):
             self.load_model()
         else:
             if is_intern_vit_6b_model(self.vision_tower_name):
+                from .intern_vit_6b.configuration_intern_vit import InternVisionConfig
+
                 self.cfg_only = InternVisionConfig.from_pretrained(self.vision_tower_name)
             else:
                 self.cfg_only = CLIPVisionConfig.from_pretrained(self.vision_tower_name)
@@ -82,6 +84,8 @@ class CLIPVisionTower(nn.Module):
                 image_std=[0.229, 0.224, 0.225],
                 size=crop_size,
             )
+            from .intern_vit_6b.modeling_intern_vit import InternVisionModel
+
             self.vision_tower = InternVisionModel.from_pretrained(self.vision_tower_name)
         else:
             self.image_processor = CLIPImageProcessor.from_pretrained(self.vision_tower_name)
