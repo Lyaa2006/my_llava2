@@ -1811,6 +1811,20 @@ class LlavaMetaForCausalLM(ABC):
                 image_summary,
                 text_summary,
             )
+            if self._should_log_eval_role_activation() and "role_scores" in route_plan:
+                role_members = [
+                    self._role_member_tasks(role_id, active_experts)
+                    for role_id in range(route_plan["role_scores"].numel())
+                ]
+                self._emit_eval_role_activation_record(
+                    self._build_eval_role_activation_record(
+                        active_experts=active_experts,
+                        role_scores=route_plan["role_scores"],
+                        candidate_experts=route_plan.get("candidate_experts", []),
+                        role_members=role_members,
+                        route_plan=route_plan,
+                    )
+                )
             self._apply_relation_weights_to_experts(route_plan)
 
         # TODO: image start / end is not implemented here to support pretraining.

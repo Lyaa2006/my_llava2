@@ -25,6 +25,12 @@ done
 validate_model_config_paths "$MODEL_CONFIG"
 validate_data_config_paths "$DATA_CONFIG"
 
+MCITLIB_ROOT="$(realpath "$SCRIPT_DIR/../../../../..")"
+RESOLVED_TRAIN_CONFIG="$(mktemp "${TMPDIR:-/tmp}/hidarc-train-config.XXXXXX.json")"
+"$PYTHON_BIN" "$MCITLIB_ROOT/configs/train_configs/HiDARC/resolve_hidarc_config.py" "$TRAIN_CONFIG" --output "$RESOLVED_TRAIN_CONFIG"
+trap 'rm -f "$RESOLVED_TRAIN_CONFIG"' EXIT
+TRAIN_CONFIG="$RESOLVED_TRAIN_CONFIG"
+
 if [ -n "${LOG_FILE:-}" ] && [ "${LOG_TEE_ACTIVE:-0}" != "1" ]; then
     mkdir -p "$(dirname "$LOG_FILE")"
     export LOG_TEE_ACTIVE=1
@@ -292,9 +298,29 @@ for routing_key in \
     role_assignment_member_support_mode \
     role_assignment_member_excess_alpha \
     role_member_top_k \
+    eval_use_role_spectral_prototype \
+    eval_disable_role_image_prototype \
+    routing_early_uniform_mix \
+    routing_early_role_temperature \
+    routing_early_task_temperature \
+    routing_early_role_strength \
+    routing_middle_temperature \
+    routing_middle_role_temperature \
+    routing_middle_role_strength \
+    routing_middle_role_gamma \
+    routing_middle_role_uniform_mix \
+    routing_middle_task_uniform_mix \
+    routing_middle_role_margin_low \
+    routing_middle_role_margin_high \
+    routing_middle_intra_margin_low \
+    routing_middle_intra_margin_high \
+    routing_late_role_temperature \
+    routing_late_task_temperature \
+    routing_late_role_strength \
+    routing_late_role_uniform_mix \
+    routing_role_task_floor \
     routing_score_normalization \
-    routing_score_scale \
-    routing_strategy; do
+    routing_score_scale; do
     append_optional_train_arg "$routing_key"
 done
 

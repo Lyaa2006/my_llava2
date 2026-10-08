@@ -237,6 +237,32 @@ The program will automatically perform both training and inference. However, for
 
 **Note:** KeepLoRA requires a sufficiently large GPU memory footprint to run. In the original environment reported by the authors, experiments were conducted on an H100 (80GB).
 
+### 6. HiDARC example: LLaVA + UCIT
+
+Install the shared environment from the repository root, then set the model and
+dataset paths in `configs/model_configs/llava.json` and
+`configs/data_configs/UCIT/*.json`.  The launcher below uses the formal UCIT
+task configurations and the canonical collaboration profile at
+`configs/train_configs/HiDARC/LLaVA/UCIT/collaboration.json`; it does not use
+the mini/smoke configurations.
+
+```bash
+pip install -r requirements.txt
+
+export CUDA_VISIBLE_DEVICES=0,1
+export RUN_ROOT="$PWD/checkpoints/UCIT/LLaVA/ucit_run_$(date +%Y%m%d_%H%M%S)"
+bash LLaVA/HiDARC/scripts/MCITlib/Train/train_UCIT.sh
+```
+
+By default this trains all six UCIT tasks and evaluates every completed stage.
+To resume a selected range after its predecessor checkpoint is present, set
+`TASKS`, for example `TASKS=3,4 RUN_EVAL=1 bash .../train_UCIT.sh`.
+
+The `final.json` and per-task JSON files contain the formal training settings.
+Shared routing and role-assignment settings live only in the corresponding
+`collaboration.json`; see `configs/train_configs/HiDARC/README.md` for the
+four LLaVA/InternVL × UCIT/MLLM-DCL profiles.
+
 ## Citation
 
 ```bibtex

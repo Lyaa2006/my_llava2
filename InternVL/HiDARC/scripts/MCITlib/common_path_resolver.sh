@@ -213,6 +213,7 @@ PY
 read_optional_json_field() {
     python3 - "$1" "$2" <<'PY'
 import json
+import os
 import sys
 
 cfg_path = sys.argv[1]
@@ -222,6 +223,8 @@ with open(cfg_path, "r", encoding="utf-8") as f:
 value = cfg.get(key, "")
 if value is None:
     value = ""
+elif key.endswith("_path") and isinstance(value, str) and value and not os.path.isabs(value):
+    value = os.path.abspath(os.path.join(os.path.dirname(cfg_path), value))
 print(value)
 PY
 }

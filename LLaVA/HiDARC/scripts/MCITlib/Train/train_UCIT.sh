@@ -29,19 +29,20 @@ make_train_config() {
     local task_id="$1" output_dir="$2" previous_model="$3" cache_dir="$4" out="$5"
     "$PYTHON_BIN" - "$CONFIG_ROOT/train_configs/HiDARC/LLaVA/UCIT/train/task${task_id}.json" "$out" \
         "$output_dir" "$previous_model" "$cache_dir" "${CUDA_VISIBLE_DEVICES}" <<'PY'
-import json, sys
+import json, os, sys
 source, target, output, previous, cache, visible = sys.argv[1:]
 cfg = json.load(open(source, encoding="utf-8"))
+collaboration = os.path.normpath(os.path.join(os.path.dirname(source), "..", "collaboration.json"))
+if not os.path.isfile(collaboration):
+    raise FileNotFoundError(f"Missing collaboration profile: {collaboration}")
 cfg.update({
     "protocol": "UCIT",
     "task_count": 6,
     "gpu_num": len([x for x in visible.split(",") if x.strip()]),
     "output_dir": output,
     "description_cache_dir": cache,
-    "batch_size": int(__import__("os").environ.get("MINI_BATCH_SIZE", "1")),
-    "grad_acc": int(__import__("os").environ.get("MINI_GRAD_ACC", "1")),
-    "max_steps": int(__import__("os").environ.get("MINI_MAX_STEPS", "1")),
 })
+cfg["collaboration_config"] = collaboration
 if previous:
     cfg["previous_model"] = previous
 json.dump(cfg, open(target, "w", encoding="utf-8"), indent=2)
@@ -51,16 +52,20 @@ PY
 make_eval_config() {
     local task_id="$1" checkpoint="$2" out="$3"
     "$PYTHON_BIN" - "$CONFIG_ROOT/train_configs/HiDARC/LLaVA/UCIT/eval/task${task_id}.json" "$out" "$checkpoint" "$RUN_ROOT/results" "$MODEL_CONFIG" "$CUDA_VISIBLE_DEVICES" <<'PY'
-import json, sys
+import json, os, sys
 source, target, checkpoint, result_root, model_path, visible = sys.argv[1:]
 cfg = json.load(open(source, encoding="utf-8"))
 model = json.load(open(model_path, encoding="utf-8"))
+collaboration = os.path.normpath(os.path.join(os.path.dirname(source), "..", "collaboration.json"))
+if not os.path.isfile(collaboration):
+    raise FileNotFoundError(f"Missing collaboration profile: {collaboration}")
 cfg.update({
     "gpu_num": len([x for x in visible.split(",") if x.strip()]),
     "model_path": checkpoint,
     "result_path": result_root,
     "text_tower": model["text_tower"],
     "num_task": 6,
+    "routing_config_path": collaboration,
 })
 json.dump(cfg, open(target, "w", encoding="utf-8"), indent=2)
 PY

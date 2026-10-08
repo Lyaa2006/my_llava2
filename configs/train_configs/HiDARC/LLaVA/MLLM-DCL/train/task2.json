@@ -10,14 +10,5 @@
   "lr": 0.0002,
   "cur_task": 1,
   "output_dir": "/tmp/hidarc_task2",
-  "previous_model": "/tmp/hidarc_task1",
-  "role_assignment_top_k": 2,
-  "role_assignment_min_similarity": 0.4,
-  "role_assignment_margin": 0,
-  "role_assignment_pair_weight": 0.1,
-  "role_assignment_member_temperature": 0.25,
-  "role_assignment_member_support_mode": "excess_mass",
-  "role_member_top_k": 2,
-  "role_top_k": 2,
-  "role_birth_threshold": 0.5
+  "previous_model": "/tmp/hidarc_task1"
 }

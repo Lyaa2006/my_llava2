@@ -1,11 +1,35 @@
 import torch
 import torch.nn as nn
+import sys
+import types
+from pathlib import Path
 
 from transformers import CLIPVisionModel, CLIPImageProcessor, CLIPVisionConfig, CLIPVisionModelWithProjection
 from transformers import CLIPTextModel, CLIPTextConfig
+
+# The HiDARC checkout omitted the shared InternViT implementation.  Reuse the
+# repository's identical InternVL implementation without changing the model
+# or training arguments.
+_intern_vit_package = __package__ + ".intern_vit_6b"
+if _intern_vit_package not in sys.modules:
+    _shared_intern_vit = Path(__file__).resolve().parents[4] / "MoELoRA" / "llava" / "model" / "multimodal_encoder" / "intern_vit_6b"
+    if not _shared_intern_vit.is_dir():
+        raise ModuleNotFoundError(f"Missing shared InternViT implementation: {_shared_intern_vit}")
+    _module = types.ModuleType(_intern_vit_package)
+    _module.__path__ = [str(_shared_intern_vit)]
+    sys.modules[_intern_vit_package] = _module
+
 from .intern_vit_6b.configuration_intern_vit import InternVisionConfig
 from .intern_vit_6b.modeling_intern_vit import InternVisionModel
 from ..spectral_pca import load_spectral_pca
+
+# Transformers 4.31 may forward a loader-only ``token`` kwarg to custom
+# vision-model constructors.  It is authentication metadata, not a model
+# argument, so discard it at this compatibility boundary.
+_intern_vit_init = InternVisionModel.__init__
+def _intern_vit_compat_init(self, config, **kwargs):
+    _intern_vit_init(self, config)
+InternVisionModel.__init__ = _intern_vit_compat_init
 
 
 def is_intern_vit_6b_model(vision_tower_name):

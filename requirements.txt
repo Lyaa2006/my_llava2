@@ -1,0 +1,4 @@
+# Shared HiDARC environment for the LLaVA and InternVL implementations.
+# Install the CUDA-matched PyTorch wheel before this file when the host does
+# not provide the CUDA 11.8 build described in the README.
+-r LLaVA/HiDARC/requirements.txt

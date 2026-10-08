@@ -32,16 +32,17 @@ make_train_config() {
 import json, os, sys
 source, target, output, previous, cache, visible = sys.argv[1:]
 cfg = json.load(open(source, encoding="utf-8"))
+collaboration = os.path.normpath(os.path.join(os.path.dirname(source), "..", "collaboration.json"))
+if not os.path.isfile(collaboration):
+    raise FileNotFoundError(f"Missing collaboration profile: {collaboration}")
 cfg.update({
     "protocol": "MLLM-DCL",
     "task_count": 5,
     "gpu_num": len([x for x in visible.split(",") if x.strip()]),
     "output_dir": output,
     "description_cache_dir": cache,
-    "batch_size": int(os.environ.get("MINI_BATCH_SIZE", "1")),
-    "grad_acc": int(os.environ.get("MINI_GRAD_ACC", "1")),
-    "max_steps": int(os.environ.get("MINI_MAX_STEPS", "1")),
 })
+cfg["collaboration_config"] = collaboration
 if previous:
     cfg["previous_model"] = previous
 json.dump(cfg, open(target, "w", encoding="utf-8"), indent=2)
@@ -55,12 +56,16 @@ import json, sys
 source, target, checkpoint, result_root, model_path, visible = sys.argv[1:]
 cfg = json.load(open(source, encoding="utf-8"))
 model = json.load(open(model_path, encoding="utf-8"))
+collaboration = os.path.normpath(os.path.join(os.path.dirname(source), "..", "collaboration.json"))
+if not os.path.isfile(collaboration):
+    raise FileNotFoundError(f"Missing collaboration profile: {collaboration}")
 cfg.update({
     "gpu_num": len([x for x in visible.split(",") if x.strip()]),
     "model_path": checkpoint,
     "result_path": result_root,
     "text_tower": model["text_tower"],
     "num_task": 5,
+    "routing_config_path": collaboration,
 })
 json.dump(cfg, open(target, "w", encoding="utf-8"), indent=2)
 PY

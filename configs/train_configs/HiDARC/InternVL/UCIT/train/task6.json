@@ -7,16 +7,7 @@
   "epoch": 1,
   "batch_size": 2,
   "grad_acc": 16,
-  "lr": 0.00005,
+  "lr": 5e-05,
   "cur_task": 5,
-  "output_dir": "/tmp/hidarc_task6",
-  "role_assignment_top_k": 2,
-  "role_assignment_min_similarity": 0.4,
-  "role_assignment_margin": 0.01,
-  "role_assignment_pair_weight": 0.3,
-  "role_assignment_member_temperature": 0.25,
-  "role_assignment_member_support_mode": "excess_mass",
-  "role_member_top_k": 2,
-  "role_top_k": 2,
-  "role_birth_threshold": 0.5
+  "output_dir": "/tmp/hidarc_task6"
 }

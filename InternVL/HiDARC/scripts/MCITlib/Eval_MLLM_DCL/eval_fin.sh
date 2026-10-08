@@ -18,16 +18,8 @@ MODELPATH=$(read_config "$TRAIN_CONFIG" model_path)
 MODELBASE=$(read_config "$MODEL_CONFIG" model_name)
 TEXT_TOWER=$(read_config "$TRAIN_CONFIG" text_tower)
 NUM_TASK=$(read_config "$TRAIN_CONFIG" num_task)
-ROUTING_CONFIG_PATH=$(python3 - "$TRAIN_CONFIG" <<'PY'
-import json, sys
-print(json.load(open(sys.argv[1])).get("routing_config_path", ""))
-PY
-)
-STAGE1_BAND_SCHEDULE_PATH=$(python3 - "$TRAIN_CONFIG" <<'PY'
-import json, sys
-print(json.load(open(sys.argv[1])).get("stage1_band_schedule_path", ""))
-PY
-)
+ROUTING_CONFIG_PATH=$(read_optional_json_field "$TRAIN_CONFIG" routing_config_path)
+STAGE1_BAND_SCHEDULE_PATH=$(read_optional_json_field "$TRAIN_CONFIG" stage1_band_schedule_path)
 DATA_PATH=$(read_config "$DATA_CONFIG" test_path)
 IMAGE=$(read_config "$DATA_CONFIG" test_folder)
 RESULT_PATH=$(read_config "$TRAIN_CONFIG" result_path)
