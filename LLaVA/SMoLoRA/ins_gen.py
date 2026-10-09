@@ -39,7 +39,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Instruction embedding generation')
     parser.add_argument(
         '--model_path',
-        default="__SHARED_ROOT__syc/model/all-MiniLM-L6-v2",
+        default="__SHAREDB_3TB_ROOT__/syc/model/all-MiniLM-L6-v2",
         type=str,
         help='model_path'
     )

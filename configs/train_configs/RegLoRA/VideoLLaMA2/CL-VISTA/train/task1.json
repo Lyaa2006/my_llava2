@@ -1,7 +1,7 @@
 {
   "gpu_num": 2,
   "rank": 32,
-  "output_dir": "__SHARED_ROOT__/ckpt_VISTA/VideoLLaMA2/RegLoRA/task1_videollama2_lora",
+  "output_dir": "__SHAREDB_6TB_ROOT__/ckpt_VISTA/VideoLLaMA2/RegLoRA/task1_videollama2_lora",
   "epoch": 1,
   "batch_size": 4,
   "grad_acc": 2,

@@ -17,8 +17,8 @@ def mean_pooling(model_output, attention_mask):
 
 
 def sentence_bert(sentences: List[str]):
-    tokenizer = AutoTokenizer.from_pretrained('__SHARED_ROOT__syc/model/all-MiniLM-L6-v2')
-    model = AutoModel.from_pretrained('__SHARED_ROOT__syc/model/all-MiniLM-L6-v2')
+    tokenizer = AutoTokenizer.from_pretrained('__SHAREDB_3TB_ROOT__/syc/model/all-MiniLM-L6-v2')
+    model = AutoModel.from_pretrained('__SHAREDB_3TB_ROOT__/syc/model/all-MiniLM-L6-v2')
 
     encoded_input = tokenizer(
         sentences,
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Instruction embedding generation')
     parser.add_argument(
         '--model_path',
-        default="__SHARED_ROOT__syc/model/all-MiniLM-L6-v2",
+        default="__SHAREDB_3TB_ROOT__/syc/model/all-MiniLM-L6-v2",
         type=str,
         help='model_path'
     )
