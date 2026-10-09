@@ -72,7 +72,7 @@ done
 python -m llava.eval.CoIN.convert_result_to_submission \
     --result-file $output_file --output_file $RESULT_DIR/$STAGE/our_result_for_submission.tsv
 
-# /mnt/cache/guohaiyang/miniconda3/envs/coin/bin/python -m llava.eval.LLaVA.CoIN.create_prompt \
+# __CACHE_ROOT__/miniconda3/envs/coin/bin/python -m llava.eval.LLaVA.CoIN.create_prompt \
 #     --rule ./ETrain/Eval/LLaVA/CoIN/rule.json \
 #     --questions ./playground/Instructions_Original/ScienceQA/test.json \
 #     --results $output_file \

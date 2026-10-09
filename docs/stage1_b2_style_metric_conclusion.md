@@ -249,8 +249,8 @@ docs/stage1_protocol_results/llava/style_metric_redef_v2/canonical/
 
 本节以 2026 年 8 月 11 日的两条正式复跑结果为准：
 
-- [seed17 canonical summary](/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed17/canonical/stage1_boundary_summary.json)
-- [seed27 canonical summary](/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/stage1_boundary_summary.json)
+- [seed17 canonical summary](__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed17/canonical/stage1_boundary_summary.json)
+- [seed27 canonical summary](__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/stage1_boundary_summary.json)
 
 此前文档中的 `internvl_style_metric_v1` 仅可视为早期探索；当前 `InternVL b2` 结论统一以这轮同口径复跑为准。
 

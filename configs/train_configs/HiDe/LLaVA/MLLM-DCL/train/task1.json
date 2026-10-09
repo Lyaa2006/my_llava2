@@ -2,7 +2,7 @@
   "gpu_num": 4,
   "rank": 160,
   "expert_num": 5,
-  "output_dir": "/mnt/lyaa/MCITlib/checkpoints/MLLM-DCL/LLaVA/HiDe/Task1_llava_lora",
+  "output_dir": "__REPO_ROOT__/checkpoints/MLLM-DCL/LLaVA/HiDe/Task1_llava_lora",
   "cur_task": 0,
   "epoch": 1,
   "batch_size": 8,

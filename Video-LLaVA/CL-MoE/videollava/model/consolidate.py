@@ -1,6 +1,6 @@
 """
 Usage:
-python3 -m llava.model.consolidate --src ~/model_weights/llava-7b --dst ~/model_weights/llava-7b_consolidate
+python3 -m llava.model.consolidate --src __HOME_ROOT__/model_weights/llava-7b --dst __HOME_ROOT__/model_weights/llava-7b_consolidate
 """
 import argparse
 

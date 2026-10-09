@@ -51,7 +51,7 @@ same absolute file to every UCIT/DCL task:
 
 ```bash
 python InternVL/HiDARC/scripts/MCITlib/fit_spectral_pca.py \
-  --vision_tower /mnt/lyaa/MCITlib/models/InternVL/InternViT-6B-224px \
+  --vision_tower __REPO_ROOT__/models/InternVL/InternViT-6B-224px \
   --data_json /path/to/calibration.json \
   --image_folder /path/to/images \
   --output_path /path/to/internvl_spectral_pca_3200_to_512.pt \

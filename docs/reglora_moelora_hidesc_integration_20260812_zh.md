@@ -59,7 +59,7 @@
 - `b1` 和 `b2` 区间内的相邻阶段插值
 - 可选的 spectral / role prototype 评分信号
 
-在当前仓库中，你说的 `MoELoRA` 最接近的是 [LLaVA/MR-LoRA](/mnt/lyaa/MCITlib/LLaVA/MR-LoRA) 这一套实现；其底层 MoE-LoRA 线性层在 [clitmoelora.py](/mnt/lyaa/MCITlib/LLaVA/MR-LoRA/CoIN/peft/tuners/clitmoelora.py)。
+在当前仓库中，你说的 `MoELoRA` 最接近的是 [LLaVA/MR-LoRA](__REPO_ROOT__/LLaVA/MR-LoRA) 这一套实现；其底层 MoE-LoRA 线性层在 [clitmoelora.py](__REPO_ROOT__/LLaVA/MR-LoRA/CoIN/peft/tuners/clitmoelora.py)。
 
 ## 3. 当前仓库中可直接复用的 HiDESC 资产
 
@@ -67,9 +67,9 @@
 
 HiDESC 的训练侧已经基本成型，核心在：
 
-- 训练参数定义：[LLaVA/HiDESC/llava/train/train_MOE.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/train_MOE.py)
-- trainer loss 实现：[LLaVA/HiDESC/llava/train/llava_trainer.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py)
-- description token 选择：[LLaVA/HiDESC/llava/train/description_utils.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/description_utils.py)
+- 训练参数定义：[LLaVA/HiDESC/llava/train/train_MOE.py](__REPO_ROOT__/LLaVA/HiDESC/llava/train/train_MOE.py)
+- trainer loss 实现：[LLaVA/HiDESC/llava/train/llava_trainer.py](__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py)
+- description token 选择：[LLaVA/HiDESC/llava/train/description_utils.py](__REPO_ROOT__/LLaVA/HiDESC/llava/train/description_utils.py)
 
 已经实现的关键能力包括：
 
@@ -94,9 +94,9 @@ trainer 中已经支持：
 
 HiDESC 的 eval 分层激活主干在：
 
-- 分层路由主体：[LLaVA/HiDESC/llava/model/llava_arch.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py)
-- 路由配置默认值：[LLaVA/HiDESC/llava/model/language_model/llava_llama.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/language_model/llava_llama.py)
-- Stage 1 日程表：[configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json](/mnt/lyaa/MCITlib/configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json)
+- 分层路由主体：[LLaVA/HiDESC/llava/model/llava_arch.py](__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py)
+- 路由配置默认值：[LLaVA/HiDESC/llava/model/language_model/llava_llama.py](__REPO_ROOT__/LLaVA/HiDESC/llava/model/language_model/llava_llama.py)
+- Stage 1 日程表：[configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json](__REPO_ROOT__/configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json)
 
 已经实现的关键能力包括：
 
@@ -131,7 +131,7 @@ RegLoRA 当前不是在 `Trainer.compute_loss()` 里显式加正则，而是在�
 
 关键位置：
 
-- [LLaVA/RegLoRA/llava/model/language_model/llava_llama.py](/mnt/lyaa/MCITlib/LLaVA/RegLoRA/llava/model/language_model/llava_llama.py)
+- [LLaVA/RegLoRA/llava/model/language_model/llava_llama.py](__REPO_ROOT__/LLaVA/RegLoRA/llava/model/language_model/llava_llama.py)
 
 现状是：
 
@@ -193,11 +193,11 @@ w_reglora_main = 1.0
 
 建议迁移来源：
 
-- [LLaVA/HiDESC/llava/train/train_MOE.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/train_MOE.py)
+- [LLaVA/HiDESC/llava/train/train_MOE.py](__REPO_ROOT__/LLaVA/HiDESC/llava/train/train_MOE.py)
 
 建议迁移目标：
 
-- [LLaVA/RegLoRA/llava/train/train.py](/mnt/lyaa/MCITlib/LLaVA/RegLoRA/llava/train/train.py)
+- [LLaVA/RegLoRA/llava/train/train.py](__REPO_ROOT__/LLaVA/RegLoRA/llava/train/train.py)
 
 最小迁移单元：
 
@@ -207,7 +207,7 @@ w_reglora_main = 1.0
 4. `LazySupervisedDataset.__getitem__`
 5. `DataCollatorForSupervisedDataset`
 
-强烈建议把 [description_utils.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/description_utils.py) 原样复制到：
+强烈建议把 [description_utils.py](__REPO_ROOT__/LLaVA/HiDESC/llava/train/description_utils.py) 原样复制到：
 
 - `LLaVA/RegLoRA/llava/train/description_utils.py`
 
@@ -217,7 +217,7 @@ w_reglora_main = 1.0
 
 当前 RegLoRA trainer 在：
 
-- [LLaVA/RegLoRA/llava/train/llava_trainer.py](/mnt/lyaa/MCITlib/LLaVA/RegLoRA/llava/train/llava_trainer.py)
+- [LLaVA/RegLoRA/llava/train/llava_trainer.py](__REPO_ROOT__/LLaVA/RegLoRA/llava/train/llava_trainer.py)
 
 它现在基本只有：
 
@@ -252,11 +252,11 @@ w_reglora_main = 1.0
 
 来源文件：
 
-- [LLaVA/HiDESC/llava/train/llava_trainer.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py)
+- [LLaVA/HiDESC/llava/train/llava_trainer.py](__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py)
 
 目标文件：
 
-- [LLaVA/RegLoRA/llava/train/llava_trainer.py](/mnt/lyaa/MCITlib/LLaVA/RegLoRA/llava/train/llava_trainer.py)
+- [LLaVA/RegLoRA/llava/train/llava_trainer.py](__REPO_ROOT__/LLaVA/RegLoRA/llava/train/llava_trainer.py)
 
 ### Step 3: 增加 description cache 抽取模式
 
@@ -272,7 +272,7 @@ RegLoRA 需要新增：
 
 推荐迁移来源：
 
-- [LLaVA/HiDESC/llava/train/train_MOE.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/train_MOE.py)
+- [LLaVA/HiDESC/llava/train/train_MOE.py](__REPO_ROOT__/LLaVA/HiDESC/llava/train/train_MOE.py)
 
 重点函数包括：
 
@@ -406,7 +406,7 @@ HiDESC 的 trainer 依赖 `output_hidden_states=True`。
 
 - `outputs.hidden_states`
 
-当前从 [llava_llama.py](/mnt/lyaa/MCITlib/LLaVA/RegLoRA/llava/model/language_model/llava_llama.py) 看，这一条件是满足的。
+当前从 [llava_llama.py](__REPO_ROOT__/LLaVA/RegLoRA/llava/model/language_model/llava_llama.py) 看，这一条件是满足的。
 
 ### 风险 3：description path 多次 forward 带来的显存上升
 
@@ -466,7 +466,7 @@ HiDESC 原实现已经在 train 入口中这样处理，RegLoRA 迁移时建议�
 
 核心实现：
 
-- [LLaVA/MR-LoRA/CoIN/peft/tuners/clitmoelora.py](/mnt/lyaa/MCITlib/LLaVA/MR-LoRA/CoIN/peft/tuners/clitmoelora.py)
+- [LLaVA/MR-LoRA/CoIN/peft/tuners/clitmoelora.py](__REPO_ROOT__/LLaVA/MR-LoRA/CoIN/peft/tuners/clitmoelora.py)
 
 关键点在：
 
@@ -521,7 +521,7 @@ router_probs = softmax(router_logits + log W(layer))
 
 ### 需要改的核心文件
 
-- [LLaVA/MR-LoRA/CoIN/peft/tuners/clitmoelora.py](/mnt/lyaa/MCITlib/LLaVA/MR-LoRA/CoIN/peft/tuners/clitmoelora.py)
+- [LLaVA/MR-LoRA/CoIN/peft/tuners/clitmoelora.py](__REPO_ROOT__/LLaVA/MR-LoRA/CoIN/peft/tuners/clitmoelora.py)
 
 建议新增能力：
 
@@ -539,7 +539,7 @@ router_logits = native_router_logits + prior_logits
 你仍需要一个和 HiDESC 类似的“阶段日程生成器”，也就是：
 
 - 根据当前图像 / 文本 guide 信号，得到 `early/middle/late` 三套 basis prior
-- 根据 [llava_stage1_band_eval_schedule.json](/mnt/lyaa/MCITlib/configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json) 生成每层 prior
+- 根据 [llava_stage1_band_eval_schedule.json](__REPO_ROOT__/configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json) 生成每层 prior
 
 这部分逻辑建议新加在：
 
@@ -668,7 +668,7 @@ eval_stage_prior_mode = "logit_bias"
 
 但更推荐直接复用：
 
-- [configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json](/mnt/lyaa/MCITlib/configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json)
+- [configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json](__REPO_ROOT__/configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json)
 
 ## 5.8 MoELoRA 的 basis prior 从哪里来
 

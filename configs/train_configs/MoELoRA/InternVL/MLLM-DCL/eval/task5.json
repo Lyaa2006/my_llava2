@@ -1,6 +1,6 @@
 {
   "gpu_num": 1,
   "stage": "MoELoRA-task5",
-  "model_path": "/home/lyaa/MCITlib/checkpoints/MLLM-DCL/InternVL/MoELoRA/full/Task5_internvl_lora",
-  "result_path": "/home/lyaa/MCITlib/results/MLLM-DCL/InternVL/MoELoRA/full/each_dataset"
+  "model_path": "__HOME_ROOT__/MCITlib/checkpoints/MLLM-DCL/InternVL/MoELoRA/full/Task5_internvl_lora",
+  "result_path": "__HOME_ROOT__/MCITlib/results/MLLM-DCL/InternVL/MoELoRA/full/each_dataset"
 }

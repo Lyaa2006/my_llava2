@@ -25,7 +25,7 @@
         ]
       },
       "sample_count": 740,
-      "report_path": "/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/leave_one_dataset__acl/boundary_report.json"
+      "report_path": "__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/leave_one_dataset__acl/boundary_report.json"
     },
     {
       "model": "internvl",
@@ -50,7 +50,7 @@
         ]
       },
       "sample_count": 634,
-      "report_path": "/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/leave_one_dataset__dcl/boundary_report.json"
+      "report_path": "__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/leave_one_dataset__dcl/boundary_report.json"
     },
     {
       "model": "internvl",
@@ -75,7 +75,7 @@
         ]
       },
       "sample_count": 1190,
-      "report_path": "/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/leave_one_dataset__ucit/boundary_report.json"
+      "report_path": "__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/leave_one_dataset__ucit/boundary_report.json"
     }
   ],
   "aggregate": {

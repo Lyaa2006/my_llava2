@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="/mnt/lyaa/MCITlib"
+ROOT_DIR="__REPO_ROOT__"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 OUTPUT_JSON="${OUTPUT_JSON:-${ROOT_DIR}/docs/experiment3_next_task_description_failures.json}"
 REPORT_MD="${REPORT_MD:-${ROOT_DIR}/docs/experiment3_next_task_description_failures.md}"

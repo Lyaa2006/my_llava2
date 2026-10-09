@@ -17,8 +17,8 @@
 这一轮只针对 `b1`，没有改动 `b2` 的既有流程。
 
 - `b2` 工作流保持原样
-- `b1` 使用独立 runner：[scripts/run_stage1_b1_results.sh](/mnt/lyaa/MCITlib/scripts/run_stage1_b1_results.sh)
-- 多 seed 启动器为：[scripts/run_stage1_b1_multiseed.sh](/mnt/lyaa/MCITlib/scripts/run_stage1_b1_multiseed.sh)
+- `b1` 使用独立 runner：[scripts/run_stage1_b1_results.sh](__REPO_ROOT__/scripts/run_stage1_b1_results.sh)
+- 多 seed 启动器为：[scripts/run_stage1_b1_multiseed.sh](__REPO_ROOT__/scripts/run_stage1_b1_multiseed.sh)
 
 最关键的变化是：`b1` 不再被当作“单个最优点”来判定，而是改成围绕最佳 crossover 区域返回一个 `3-5` 层宽的候选带。
 
@@ -47,12 +47,12 @@
 
 对应结果在：
 
-- [seed7](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed7/canonical/stage1_boundary_summary.json)
-- [seed13](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed13/canonical/stage1_boundary_summary.json)
-- [seed21](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed21/canonical/stage1_boundary_summary.json)
-- [seed29](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed29/canonical/stage1_boundary_summary.json)
-- [seed35](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed35/canonical/stage1_boundary_summary.json)
-- [seed42](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed42/canonical/stage1_boundary_summary.json)
+- [seed7](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed7/canonical/stage1_boundary_summary.json)
+- [seed13](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed13/canonical/stage1_boundary_summary.json)
+- [seed21](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed21/canonical/stage1_boundary_summary.json)
+- [seed29](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed29/canonical/stage1_boundary_summary.json)
+- [seed35](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed35/canonical/stage1_boundary_summary.json)
+- [seed42](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed42/canonical/stage1_boundary_summary.json)
 
 大规模启动器会尽量复用历史 `b1` 实验产生的 sample cache。对于同 seed 的重分析，这种复用非常有效；对于新 seed，由于采样样本本身会变化，因此 cache 复用只能部分生效。
 
@@ -64,7 +64,7 @@
 
 ## 指标公式
 
-当前实现位于 [scripts/stage1_analyze_boundaries.py](/mnt/lyaa/MCITlib/scripts/stage1_analyze_boundaries.py)。
+当前实现位于 [scripts/stage1_analyze_boundaries.py](__REPO_ROOT__/scripts/stage1_analyze_boundaries.py)。
 
 ### 三条阶段信号曲线
 

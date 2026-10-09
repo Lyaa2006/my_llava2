@@ -17,8 +17,8 @@ This report keeps only `2` samples per transition to show the failure pattern co
 
 ### Task1_to_Task2_ArxivQA
 
-- checkpoint: `/mnt/lyaa/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task1_llava_lora`
-- dataset: `/mnt/lyaa/my_llava/UCIT/ArxivQA/train_4w.json`
+- checkpoint: `__DATA_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task1_llava_lora`
+- dataset: `__DATA_ROOT__/my_llava/UCIT/ArxivQA/train_4w.json`
 
 #### Sample 1
 
@@ -44,8 +44,8 @@ The image features a three-dimensional representation of a spider web, with the 
 
 ### Task2_to_Task3_VizWiz
 
-- checkpoint: `/mnt/lyaa/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task2_llava_lora`
-- dataset: `/mnt/lyaa/my_llava/UCIT/VizWiz/train.json`
+- checkpoint: `__DATA_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task2_llava_lora`
+- dataset: `__DATA_ROOT__/my_llava/UCIT/VizWiz/train.json`
 
 #### Sample 1
 
@@ -71,8 +71,8 @@ The image features a pink Pepto Bismol tablet, which is a popular antacid medica
 
 ### Task3_to_Task4_IconQA
 
-- checkpoint: `/mnt/lyaa/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task3_llava_lora`
-- dataset: `/mnt/lyaa/my_llava/UCIT/IconQA/train.json`
+- checkpoint: `__DATA_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task3_llava_lora`
+- dataset: `__DATA_ROOT__/my_llava/UCIT/IconQA/train.json`
 
 #### Sample 1
 
@@ -98,8 +98,8 @@ A computer screen with a circle graph showing the difference between two sets of
 
 ### Task4_to_Task5_CLEVR
 
-- checkpoint: `/mnt/lyaa/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task4_llava_lora`
-- dataset: `/mnt/lyaa/my_llava/UCIT/CLEVR/train_4w.json`
+- checkpoint: `__DATA_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task4_llava_lora`
+- dataset: `__DATA_ROOT__/my_llava/UCIT/CLEVR/train_4w.json`
 
 #### Sample 1
 
@@ -125,8 +125,8 @@ A computer screen with a circle graph showing the difference between two sets of
 
 ### Task5_to_Task6_Flickr30k
 
-- checkpoint: `/mnt/lyaa/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task5_llava_lora`
-- dataset: `/mnt/lyaa/my_llava/UCIT/Flickr30k/train_brief_4w.json`
+- checkpoint: `__DATA_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task5_llava_lora`
+- dataset: `__DATA_ROOT__/my_llava/UCIT/Flickr30k/train_brief_4w.json`
 
 #### Sample 1
 

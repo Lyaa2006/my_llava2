@@ -17,8 +17,8 @@ case "$MODE" in
 esac
 
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-5}"
-export PYTHON_BIN="${PYTHON_BIN:-/home/lyaa/miniconda3/envs/MCITlib_copy/bin/python}"
-export TORCHRUN_BIN="${TORCHRUN_BIN:-/home/lyaa/miniconda3/envs/MCITlib_copy/bin/torchrun}"
+export PYTHON_BIN="${PYTHON_BIN:-__ENV_ROOT__/bin/python}"
+export TORCHRUN_BIN="${TORCHRUN_BIN:-__ENV_ROOT__/bin/torchrun}"
 export PYTHONPATH="$PROJECT_ROOT:${PYTHONPATH:-}"
 
 if [[ "$MODE" == "smoke" ]]; then

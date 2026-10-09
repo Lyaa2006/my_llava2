@@ -1,6 +1,6 @@
 {
-  "train_path": "/mnt/lyaa/MCITlib/MLLM/ability/APP/train.json",
-  "test_path": "/mnt/lyaa/MCITlib/MLLM/ability/APP_test/test.json",
-  "train_folder": "/mnt/lyaa/MCITlib/MLLM/ability/APP",
-  "test_folder": "/mnt/lyaa/MCITlib/MLLM/ability/APP_test"
+  "train_path": "__REPO_ROOT__/MLLM/ability/APP/train.json",
+  "test_path": "__REPO_ROOT__/MLLM/ability/APP_test/test.json",
+  "train_folder": "__REPO_ROOT__/MLLM/ability/APP",
+  "test_folder": "__REPO_ROOT__/MLLM/ability/APP_test"
 }

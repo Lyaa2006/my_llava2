@@ -1,6 +1,6 @@
 {
   "gpu_num": 4,
-  "output_dir": "/mnt/lyaa/MCITlib/checkpoints/UCIT/InternVL/ModalPrompt/smoke/Task1_internvl",
+  "output_dir": "__REPO_ROOT__/checkpoints/UCIT/InternVL/ModalPrompt/smoke/Task1_internvl",
   "prefix_len": 10,
   "num_tasks": 6,
   "cur_task": 1,

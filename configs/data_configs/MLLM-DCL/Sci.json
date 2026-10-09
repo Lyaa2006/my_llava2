@@ -1,6 +1,6 @@
 {
-  "train_path": "/mnt/lyaa/MCITlib/MLLM/domain/Sci/train.json",
-  "test_path": "/mnt/lyaa/MCITlib/MLLM/domain/Sci/test.json",
-  "train_folder": "/mnt/lyaa/MCITlib/MLLM/domain/Sci",
-  "test_folder": "/mnt/lyaa/MCITlib/MLLM/domain/Sci"
+  "train_path": "__REPO_ROOT__/MLLM/domain/Sci/train.json",
+  "test_path": "__REPO_ROOT__/MLLM/domain/Sci/test.json",
+  "train_folder": "__REPO_ROOT__/MLLM/domain/Sci",
+  "test_folder": "__REPO_ROOT__/MLLM/domain/Sci"
 }

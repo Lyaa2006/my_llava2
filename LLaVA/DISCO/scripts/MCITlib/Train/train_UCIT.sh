@@ -31,7 +31,7 @@ echo "Config root: $CONFIG_ROOT"
 echo "CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-unset}"
 echo "NCCL_IB_DISABLE: ${NCCL_IB_DISABLE:-unset}"
 echo "NCCL_P2P_DISABLE: ${NCCL_P2P_DISABLE:-unset}"
-export PATH="/home/lyaa/miniconda3/envs/MCITlib_copy/bin:$PATH"
+export PATH="__ENV_ROOT__/bin:$PATH"
 echo "Python: $(command -v python3)"
 echo "Deepspeed: $(command -v deepspeed)"
 export HF_HUB_OFFLINE=1

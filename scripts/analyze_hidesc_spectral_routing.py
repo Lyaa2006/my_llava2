@@ -33,44 +33,44 @@ UCIT_TASKS = [
     {
         "task_id": 0,
         "task_name": "ImageNet-R",
-        "train_path": "/mnt/lyaa/my_llava/UCIT/ImageNet-R/train.json",
-        "test_path": "/mnt/lyaa/my_llava/UCIT/ImageNet-R/test_3000.json",
-        "image_folder": "/mnt/lyaa/my_llava/UCIT/datasets",
+        "train_path": "__DATA_ROOT__/my_llava/UCIT/ImageNet-R/train.json",
+        "test_path": "__DATA_ROOT__/my_llava/UCIT/ImageNet-R/test_3000.json",
+        "image_folder": "__DATA_ROOT__/my_llava/UCIT/datasets",
     },
     {
         "task_id": 1,
         "task_name": "ArxivQA",
-        "train_path": "/mnt/lyaa/my_llava/UCIT/ArxivQA/train_4w.json",
-        "test_path": "/mnt/lyaa/my_llava/UCIT/ArxivQA/test_3000.json",
-        "image_folder": "/mnt/lyaa/my_llava/UCIT/datasets",
+        "train_path": "__DATA_ROOT__/my_llava/UCIT/ArxivQA/train_4w.json",
+        "test_path": "__DATA_ROOT__/my_llava/UCIT/ArxivQA/test_3000.json",
+        "image_folder": "__DATA_ROOT__/my_llava/UCIT/datasets",
     },
     {
         "task_id": 2,
         "task_name": "VizWiz",
-        "train_path": "/mnt/lyaa/my_llava/UCIT/VizWiz/train.json",
-        "test_path": "/mnt/lyaa/my_llava/UCIT/VizWiz/test_3000.json",
-        "image_folder": "/mnt/lyaa/my_llava/UCIT/datasets",
+        "train_path": "__DATA_ROOT__/my_llava/UCIT/VizWiz/train.json",
+        "test_path": "__DATA_ROOT__/my_llava/UCIT/VizWiz/test_3000.json",
+        "image_folder": "__DATA_ROOT__/my_llava/UCIT/datasets",
     },
     {
         "task_id": 3,
         "task_name": "IconQA",
-        "train_path": "/mnt/lyaa/my_llava/UCIT/IconQA/train.json",
-        "test_path": "/mnt/lyaa/my_llava/UCIT/IconQA/test_3000.json",
-        "image_folder": "/mnt/lyaa/my_llava/UCIT/datasets",
+        "train_path": "__DATA_ROOT__/my_llava/UCIT/IconQA/train.json",
+        "test_path": "__DATA_ROOT__/my_llava/UCIT/IconQA/test_3000.json",
+        "image_folder": "__DATA_ROOT__/my_llava/UCIT/datasets",
     },
     {
         "task_id": 4,
         "task_name": "CLEVR-Math",
-        "train_path": "/mnt/lyaa/my_llava/UCIT/CLEVR/train_4w.json",
-        "test_path": "/mnt/lyaa/my_llava/UCIT/CLEVR/test_3000.json",
-        "image_folder": "/mnt/lyaa/my_llava/UCIT/datasets",
+        "train_path": "__DATA_ROOT__/my_llava/UCIT/CLEVR/train_4w.json",
+        "test_path": "__DATA_ROOT__/my_llava/UCIT/CLEVR/test_3000.json",
+        "image_folder": "__DATA_ROOT__/my_llava/UCIT/datasets",
     },
     {
         "task_id": 5,
         "task_name": "Flickr30k",
-        "train_path": "/mnt/lyaa/my_llava/UCIT/Flickr30k/train_brief_4w.json",
-        "test_path": "/mnt/lyaa/my_llava/UCIT/Flickr30k/test_3000.json",
-        "image_folder": "/mnt/lyaa/my_llava/UCIT/datasets",
+        "train_path": "__DATA_ROOT__/my_llava/UCIT/Flickr30k/train_brief_4w.json",
+        "test_path": "__DATA_ROOT__/my_llava/UCIT/Flickr30k/test_3000.json",
+        "image_folder": "__DATA_ROOT__/my_llava/UCIT/datasets",
     },
 ]
 
@@ -78,37 +78,37 @@ DCL_TASKS = [
     {
         "task_id": 0,
         "task_name": "RS",
-        "train_path": "/mnt/lyaa/MCITlib/MLLM/domain/RS/train.json",
-        "test_path": "/mnt/lyaa/MCITlib/MLLM/domain/RS/test.json",
-        "image_folder": "/mnt/lyaa/MCITlib/MLLM/domain/RS",
+        "train_path": "__REPO_ROOT__/MLLM/domain/RS/train.json",
+        "test_path": "__REPO_ROOT__/MLLM/domain/RS/test.json",
+        "image_folder": "__REPO_ROOT__/MLLM/domain/RS",
     },
     {
         "task_id": 1,
         "task_name": "Med",
-        "train_path": "/mnt/lyaa/MCITlib/MLLM/domain/Med/train.json",
-        "test_path": "/mnt/lyaa/MCITlib/MLLM/domain/Med/test.json",
-        "image_folder": "/mnt/lyaa/MCITlib/MLLM/domain/Med",
+        "train_path": "__REPO_ROOT__/MLLM/domain/Med/train.json",
+        "test_path": "__REPO_ROOT__/MLLM/domain/Med/test.json",
+        "image_folder": "__REPO_ROOT__/MLLM/domain/Med",
     },
     {
         "task_id": 2,
         "task_name": "AD",
-        "train_path": "/mnt/lyaa/MCITlib/MLLM/domain/AD/train.json",
-        "test_path": "/mnt/lyaa/MCITlib/MLLM/domain/AD/test.json",
-        "image_folder": "/mnt/lyaa/MCITlib/MLLM/domain/AD",
+        "train_path": "__REPO_ROOT__/MLLM/domain/AD/train.json",
+        "test_path": "__REPO_ROOT__/MLLM/domain/AD/test.json",
+        "image_folder": "__REPO_ROOT__/MLLM/domain/AD",
     },
     {
         "task_id": 3,
         "task_name": "Sci",
-        "train_path": "/mnt/lyaa/MCITlib/MLLM/domain/Sci/train.json",
-        "test_path": "/mnt/lyaa/MCITlib/MLLM/domain/Sci/test.json",
-        "image_folder": "/mnt/lyaa/MCITlib/MLLM/domain/Sci",
+        "train_path": "__REPO_ROOT__/MLLM/domain/Sci/train.json",
+        "test_path": "__REPO_ROOT__/MLLM/domain/Sci/test.json",
+        "image_folder": "__REPO_ROOT__/MLLM/domain/Sci",
     },
     {
         "task_id": 4,
         "task_name": "Fin",
-        "train_path": "/mnt/lyaa/MCITlib/MLLM/domain/Fin/train.json",
-        "test_path": "/mnt/lyaa/MCITlib/MLLM/domain/Fin/test.json",
-        "image_folder": "/mnt/lyaa/MCITlib/MLLM/domain/Fin",
+        "train_path": "__REPO_ROOT__/MLLM/domain/Fin/train.json",
+        "test_path": "__REPO_ROOT__/MLLM/domain/Fin/test.json",
+        "image_folder": "__REPO_ROOT__/MLLM/domain/Fin",
     },
 ]
 
@@ -119,12 +119,12 @@ BENCHMARK_TASKS = {
 
 DEFAULT_MODEL_PATHS = {
     "ucit": (
-        "/mnt/lyaa/MCITlib/checkpoints/UCIT/LLaVA/"
+        "__REPO_ROOT__/checkpoints/UCIT/LLaVA/"
         "HiDESC_from_HiDeTask1_g4b8ga2/"
         "Task6_llava_lora_HiDESC_full_gpus0123_20260713_focus04_energy1e3"
     ),
     "dcl": (
-        "/mnt/lyaa/MCITlib/runs/MLLM-DCL/HiDe/"
+        "__REPO_ROOT__/runs/MLLM-DCL/HiDe/"
         "hide_dcl_full_20260718_204518/checkpoints/Task5_llava_lora"
     ),
 }
@@ -150,11 +150,11 @@ def parse_args():
     )
     parser.add_argument(
         "--model-base",
-        default="/mnt/lyaa/my_llava/llava-v1.5-7b",
+        default="__DATA_ROOT__/my_llava/llava-v1.5-7b",
     )
     parser.add_argument(
         "--text-tower",
-        default="/mnt/lyaa/my_llava/clip-vit-large-patch14-336",
+        default="__DATA_ROOT__/my_llava/clip-vit-large-patch14-336",
     )
     parser.add_argument("--num-task", type=int, default=0)
     parser.add_argument("--conv-mode", default="llava_v1")

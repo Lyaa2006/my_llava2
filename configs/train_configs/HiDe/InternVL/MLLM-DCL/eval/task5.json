@@ -1,8 +1,8 @@
 {
   "gpu_num": 2,
   "stage": "HiDe-task5",
-  "model_path": "/mnt/lyaa/MCITlib/checkpoints/MLLM-DCL/InternVL/HiDe/Task5_internvl_lora",
+  "model_path": "__REPO_ROOT__/checkpoints/MLLM-DCL/InternVL/HiDe/Task5_internvl_lora",
   "result_path": "./results/DCL/each_dataset",
-  "text_tower": "/mnt/lyaa/MCITlib/models/InternVL/clip-vit-large-patch14-336",
+  "text_tower": "__REPO_ROOT__/models/InternVL/clip-vit-large-patch14-336",
   "num_task": 5
 }

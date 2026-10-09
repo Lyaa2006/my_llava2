@@ -292,7 +292,7 @@
 
 ### 8.1 推荐新增的训练参数
 
-建议在 [train_MOE.py](/mnt/lyaa/MCITlib/LLaVA/HiDeCL/llava/train/train_MOE.py:149) 的 `TrainingArguments` 中新增：
+建议在 [train_MOE.py](__REPO_ROOT__/LLaVA/HiDeCL/llava/train/train_MOE.py:149) 的 `TrainingArguments` 中新增：
 
 - `description_early_layer: int`
 - `description_middle_layer: int`
@@ -313,7 +313,7 @@
 
 ### 8.2 对 `llava_trainer.py` 的改造原则
 
-当前 [llava_trainer.py](/mnt/lyaa/MCITlib/LLaVA/HiDeCL/llava/train/llava_trainer.py:485) 的 `compute_loss` 结构是：
+当前 [llava_trainer.py](__REPO_ROOT__/LLaVA/HiDeCL/llava/train/llava_trainer.py:485) 的 `compute_loss` 结构是：
 
 1. answer forward
 2. description forward
@@ -452,15 +452,15 @@ def compute_loss(...):
 
 Coding Agent 在当前代码中应优先改这些位置：
 
-1. [train_MOE.py](/mnt/lyaa/MCITlib/LLaVA/HiDeCL/llava/train/train_MOE.py:149)
+1. [train_MOE.py](__REPO_ROOT__/LLaVA/HiDeCL/llava/train/train_MOE.py:149)
    添加新的 `TrainingArguments`
-2. [llava_trainer.py](/mnt/lyaa/MCITlib/LLaVA/HiDeCL/llava/train/llava_trainer.py:316)
+2. [llava_trainer.py](__REPO_ROOT__/LLaVA/HiDeCL/llava/train/llava_trainer.py:316)
    将单层 `_extract_description_states` 扩展成多层 stage 抽取
-3. [llava_trainer.py](/mnt/lyaa/MCITlib/LLaVA/HiDeCL/llava/train/llava_trainer.py:396)
+3. [llava_trainer.py](__REPO_ROOT__/LLaVA/HiDeCL/llava/train/llava_trainer.py:396)
    删除或废弃 `_compute_description_utility_loss`
-4. [llava_trainer.py](/mnt/lyaa/MCITlib/LLaVA/HiDeCL/llava/train/llava_trainer.py:485)
+4. [llava_trainer.py](__REPO_ROOT__/LLaVA/HiDeCL/llava/train/llava_trainer.py:485)
    重写 `compute_loss`
-5. [Taskn.sh](/mnt/lyaa/MCITlib/LLaVA/HiDeCL/scripts/MCITlib/Train/Taskn.sh:247)
+5. [Taskn.sh](__REPO_ROOT__/LLaVA/HiDeCL/scripts/MCITlib/Train/Taskn.sh:247)
    增加新的 CLI 参数透传
 
 ### 8.10 不建议的实现

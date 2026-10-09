@@ -6,7 +6,7 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 
-MODEL_NAME = "/mnt/ShareDB-3TB/syc/vllm_deploy/Qwen/Qwen3-30B-A3B-Instruct-2507"
+MODEL_NAME = "__SHARED_ROOT__syc/vllm_deploy/Qwen/Qwen3-30B-A3B-Instruct-2507"
 BATCH_SIZE = 128
 MAX_NEW_TOKENS = 128
 

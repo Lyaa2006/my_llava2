@@ -1,9 +1,9 @@
 {
-  "train_path": "/mnt/lyaa/MCITlib/configs/data_configs/UCIT/IconQA-train-smoke.json",
-  "replay_path": "/mnt/lyaa/my_llava/UCIT/IconQA/replay.json",
-  "router_path": "/mnt/lyaa/my_llava/UCIT/IconQA/router.json",
-  "test_path": "/mnt/lyaa/MCITlib/configs/data_configs/UCIT/IconQA-test-smoke.json",
-  "train_folder": "/mnt/lyaa/my_llava/UCIT/datasets",
-  "router_folder": "/mnt/lyaa/my_llava/UCIT/datasets",
-  "test_folder": "/mnt/lyaa/my_llava/UCIT/datasets"
+  "train_path": "__REPO_ROOT__/configs/data_configs/UCIT/IconQA-train-smoke.json",
+  "replay_path": "__DATA_ROOT__/my_llava/UCIT/IconQA/replay.json",
+  "router_path": "__DATA_ROOT__/my_llava/UCIT/IconQA/router.json",
+  "test_path": "__REPO_ROOT__/configs/data_configs/UCIT/IconQA-test-smoke.json",
+  "train_folder": "__DATA_ROOT__/my_llava/UCIT/datasets",
+  "router_folder": "__DATA_ROOT__/my_llava/UCIT/datasets",
+  "test_folder": "__DATA_ROOT__/my_llava/UCIT/datasets"
 }

@@ -8,7 +8,7 @@ import sys
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence, Tuple
 
-os.environ.setdefault("MPLCONFIGDIR", os.path.join("/tmp", "matplotlib"))
+os.environ.setdefault("MPLCONFIGDIR", os.path.join("__TMP_ROOT__", "matplotlib"))
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
@@ -37,11 +37,11 @@ from llava.utils import disable_torch_init  # noqa: E402
 from HiDe.peft import PeftModel  # noqa: E402
 
 
-DEFAULT_BASE_MODEL_PATH = "/mnt/lyaa/my_llava/llava-v1.5-7b"
-DEFAULT_VISION_TOWER_PATH = "/mnt/lyaa/my_llava/clip-vit-large-patch14-336"
-DEFAULT_UCIT_ROOT = "/mnt/lyaa/my_llava/UCIT"
+DEFAULT_BASE_MODEL_PATH = "__DATA_ROOT__/my_llava/llava-v1.5-7b"
+DEFAULT_VISION_TOWER_PATH = "__DATA_ROOT__/my_llava/clip-vit-large-patch14-336"
+DEFAULT_UCIT_ROOT = "__DATA_ROOT__/my_llava/UCIT"
 # Source of truth: logs/train_UCIT_full_20260703_211225.log
-DEFAULT_CHECKPOINT_ROOT = "/mnt/lyaa/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe"
+DEFAULT_CHECKPOINT_ROOT = "__DATA_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe"
 DEFAULT_OUTPUT_DIR = os.path.join(MCITLIB_ROOT, "docs", "experiment2_template_alignment_v21")
 DEFAULT_CONV_MODE = "llava_v1"
 DEFAULT_CONTENT_CLAUSE = (

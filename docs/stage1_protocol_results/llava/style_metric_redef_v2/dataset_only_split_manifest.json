@@ -1,5 +1,5 @@
 {
-  "input_jsonl": "/mnt/lyaa/MCITlib/configs/probe_configs/stage1_protocol/canonical_probe.jsonl",
+  "input_jsonl": "__REPO_ROOT__/configs/probe_configs/stage1_protocol/canonical_probe.jsonl",
   "summary": {
     "prompt_cluster_counts": {
       "caption": 288,

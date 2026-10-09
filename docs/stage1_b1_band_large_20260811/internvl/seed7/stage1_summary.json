@@ -2,7 +2,7 @@
   "num_reports": 3,
   "reports": [
     {
-      "path": "/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/internvl/seed7/canonical/leave_one_dataset__acl/boundary_report.json",
+      "path": "__REPO_ROOT__/docs/stage1_b1_band_large_20260811/internvl/seed7/canonical/leave_one_dataset__acl/boundary_report.json",
       "model": "internvl",
       "dataset": "acl",
       "b1_low": 14,
@@ -11,7 +11,7 @@
       "b2_high": 18
     },
     {
-      "path": "/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/internvl/seed7/canonical/leave_one_dataset__dcl/boundary_report.json",
+      "path": "__REPO_ROOT__/docs/stage1_b1_band_large_20260811/internvl/seed7/canonical/leave_one_dataset__dcl/boundary_report.json",
       "model": "internvl",
       "dataset": "dcl",
       "b1_low": 10,
@@ -20,7 +20,7 @@
       "b2_high": 14
     },
     {
-      "path": "/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/internvl/seed7/canonical/leave_one_dataset__ucit/boundary_report.json",
+      "path": "__REPO_ROOT__/docs/stage1_b1_band_large_20260811/internvl/seed7/canonical/leave_one_dataset__ucit/boundary_report.json",
       "model": "internvl",
       "dataset": "ucit",
       "b1_low": 14,

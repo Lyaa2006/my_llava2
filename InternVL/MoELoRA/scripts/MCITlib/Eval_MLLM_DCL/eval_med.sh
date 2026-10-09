@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$PROJECT_ROOT"
 
-PYTHON_BIN="${PYTHON_BIN:-/home/lyaa/miniconda3/envs/MCITlib_copy/bin/python}"
+PYTHON_BIN="${PYTHON_BIN:-__ENV_ROOT__/bin/python}"
 if [[ ! -x "$PYTHON_BIN" ]]; then
     PYTHON_BIN="$(command -v python3)"
 fi
@@ -77,7 +77,7 @@ done
     --result-file "$output_file" \
     --output-dir "$RESULT_DIR/$STAGE" \
 
-# /mnt/cache/guohaiyang/miniconda3/envs/coin/bin/python -m llava.eval.LLaVA.CoIN.create_prompt \
+# __CACHE_ROOT__/miniconda3/envs/coin/bin/python -m llava.eval.LLaVA.CoIN.create_prompt \
 #     --rule ./ETrain/Eval/LLaVA/CoIN/rule.json \
 #     --questions ./playground/Instructions_Original/ScienceQA/test.json \
 #     --results $output_file \

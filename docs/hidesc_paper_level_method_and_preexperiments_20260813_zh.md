@@ -19,10 +19,10 @@ HiDESC 不是单纯的“多专家 LoRA”，而是一个把持续学习拆成�
 
 对应实现分别在：
 
-- [训练入口](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/train_MOE.py>)
-- [训练损失](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py>)
-- [分层路由](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py>)
-- [默认路由配置](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/language_model/llava_llama.py>)
+- [训练入口](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/train_MOE.py>)
+- [训练损失](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py>)
+- [分层路由](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py>)
+- [默认路由配置](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/language_model/llava_llama.py>)
 
 ## 2. HiDESC 的训练主线
 
@@ -39,7 +39,7 @@ HiDESC 不是单纯的“多专家 LoRA”，而是一个把持续学习拆成�
 2. `reference_description_mask`
 3. `reference_description_available`
 
-这些字段由 [train_MOE.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/train_MOE.py#903>) 的 `LazySupervisedDataset.__getitem__` 和 [DataCollatorForSupervisedDataset](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/train_MOE.py#976>) 拼接出来。
+这些字段由 [train_MOE.py](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/train_MOE.py#903>) 的 `LazySupervisedDataset.__getitem__` 和 [DataCollatorForSupervisedDataset](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/train_MOE.py#976>) 拼接出来。
 
 ### 2.2 训练损失
 
@@ -49,13 +49,13 @@ HiDESC 的训练损失是三部分：
 2. `L_align`：作用在 `B1` band
 3. `L_struct = L_focus + L_energy`：作用在 `B2` band
 
-代码上，`compute_loss()` 会先跑主任务 forward，再抽取 `B1` 的 hidden states 做对齐，最后抽取 `B2` 的 description states 做结构约束，见 [llava_trainer.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py#756>)。
+代码上，`compute_loss()` 会先跑主任务 forward，再抽取 `B1` 的 hidden states 做对齐，最后抽取 `B2` 的 description states 做结构约束，见 [llava_trainer.py](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py#756>)。
 
 其中：
 
-- `L_align` 的实现是 pooled image/text cosine loss，见 [#379](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py#379>)。
-- `L_focus` 的核心是把 token change mass 压到 key tokens 上，见 [#517](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py#517>)。
-- `L_energy` 用 mean change 和 margin 做平方 hinge，见 [#558](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py#558>)。
+- `L_align` 的实现是 pooled image/text cosine loss，见 [#379](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py#379>)。
+- `L_focus` 的核心是把 token change mass 压到 key tokens 上，见 [#517](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py#517>)。
+- `L_energy` 用 mean change 和 margin 做平方 hinge，见 [#558](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py#558>)。
 
 进一步写成公式，当前代码对应的是：
 
@@ -67,24 +67,24 @@ HiDESC 的训练损失是三部分：
 
 `L_struct^B2 = \sum_{l \in B2} \beta_l^{(B2)} \left(w_f L_focus^{(l)} + w_e L_energy^{(l)}\right)`
 
-这里 `B1 = [b1_low_layer, b1_high_layer]`，`B2 = [b2_low_layer, b2_high_layer]`，默认值在 [train_MOE.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/train_MOE.py#231>) 中分别是 `15-18` 与 `29-31`。
+这里 `B1 = [b1_low_layer, b1_high_layer]`，`B2 = [b2_low_layer, b2_high_layer]`，默认值在 [train_MOE.py](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/train_MOE.py#231>) 中分别是 `15-18` 与 `29-31`。
 
 ### 2.2.1 band 内自适应权重
 
-HiDESC 在 `B1/B2` 内不是简单平均，而是显式做了“位置先验 + 难度自适应”的 band weighting，核心函数是 `_compute_band_weights()`，见 [llava_trainer.py#416](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py#416>)。
+HiDESC 在 `B1/B2` 内不是简单平均，而是显式做了“位置先验 + 难度自适应”的 band weighting，核心函数是 `_compute_band_weights()`，见 [llava_trainer.py#416](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py#416>)。
 
 对 band 内每层先定义一个难度值 `d_l`：
 
 - `B1` 中，`d_l = detach(L_align^{(l)})`
 - `B2` 中，`d_l = detach(L_focus^{(l)} + \rho L_energy^{(l)})`
 
-其中 `\rho = struct_band_energy_rho`，见 [#644](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py#644>)。
+其中 `\rho = struct_band_energy_rho`，见 [#644](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py#644>)。
 
 然后对每层做 EMA：
 
 `m_l^{(t)} = \gamma m_l^{(t-1)} + (1-\gamma)d_l^{(t)}`
 
-这里 `\gamma = loss_band_ema_gamma`，默认 `0.9`，见 [train_MOE.py#242](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/train_MOE.py#242>)。
+这里 `\gamma = loss_band_ema_gamma`，默认 `0.9`，见 [train_MOE.py#242](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/train_MOE.py#242>)。
 
 再做 band 内标准化：
 
@@ -94,7 +94,7 @@ HiDESC 在 `B1/B2` 内不是简单平均，而是显式做了“位置先验 + �
 
 `p_l = \epsilon_p + (1-\epsilon_p)\frac{l-l_{min}}{l_{max}-l_{min}}`
 
-其中 `\epsilon_p = loss_band_position_eps`，默认 `0.05`，对应 [llava_trainer.py#421](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py#421>) 到 [#437](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py#437>)。
+其中 `\epsilon_p = loss_band_position_eps`，默认 `0.05`，对应 [llava_trainer.py#421](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py#421>) 到 [#437](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py#437>)。
 
 最终 band 权重是：
 
@@ -113,13 +113,13 @@ HiDESC 在 `B1/B2` 内不是简单平均，而是显式做了“位置先验 + �
 
 ### 2.2.2 B1 与 B2 的具体对应
 
-`B1` 的聚合在 `_compute_align_band_loss()` 中实现，见 [#440](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py#440>)。其单层 loss 为：
+`B1` 的聚合在 `_compute_align_band_loss()` 中实现，见 [#440](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py#440>)。其单层 loss 为：
 
 `L_align^{(l)} = 1 - cos(\bar{h}_{img}^{(l)}, \bar{h}_{txt}^{(l)})`
 
-其中 `\bar{h}_{img}^{(l)}` 和 `\bar{h}_{txt}^{(l)}` 是 image token 与 text token 的 masked mean pooling，见 [#401](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py#401>) 到 [#406](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py#406>)。
+其中 `\bar{h}_{img}^{(l)}` 和 `\bar{h}_{txt}^{(l)}` 是 image token 与 text token 的 masked mean pooling，见 [#401](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py#401>) 到 [#406](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py#406>)。
 
-`B2` 的聚合在 `_compute_struct_band_loss()` 中实现，见 [#572](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/llava_trainer.py#572>)。这里所有层共享同一个 reference description 序列，但每一层都单独计算：
+`B2` 的聚合在 `_compute_struct_band_loss()` 中实现，见 [#572](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/llava_trainer.py#572>)。这里所有层共享同一个 reference description 序列，但每一层都单独计算：
 
 - `L_focus^{(l)}`
 - `L_energy^{(l)}`
@@ -128,7 +128,7 @@ HiDESC 在 `B1/B2` 内不是简单平均，而是显式做了“位置先验 + �
 
 ### 2.3 description cache
 
-HiDESC 不是每次训练都在线重算 reference，而是先离线抽 cache。`extract_description_cache()` 会在 `b2_high_layer` 处截取 description hidden states，再用 `select_expanded_description_tokens()` 过滤出真正的 description token 片段，见 [train_MOE.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/train_MOE.py#1207>) 与 [description_utils.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/description_utils.py#1>)。
+HiDESC 不是每次训练都在线重算 reference，而是先离线抽 cache。`extract_description_cache()` 会在 `b2_high_layer` 处截取 description hidden states，再用 `select_expanded_description_tokens()` 过滤出真正的 description token 片段，见 [train_MOE.py](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/train_MOE.py#1207>) 与 [description_utils.py](<__REPO_ROOT__/LLaVA/HiDESC/llava/train/description_utils.py#1>)。
 
 这一步的意义是：训练时所有后续任务都对同一个 reference 空间做约束，而不是让 reference 跟着任务漂移。
 
@@ -138,7 +138,7 @@ HiDESC 不是每次训练都在线重算 reference，而是先离线抽 cache。
 
 HiDESC eval 不是依赖任务 id，而是先从图像与文本摘要里算 `task scores`，再映射到 role scores 和 expert weights。
 
-核心路径在 [llava_arch.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py>)：
+核心路径在 [llava_arch.py](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py>)：
 
 - `_compute_shared_task_scores()`：基于 `spectral_image_anchors + text_anchors + history prior` 计算 task logits
 - `_score_roles()`：基于 `role_text_prototypes + role_spectral_prototypes + role prior` 计算 role logits
@@ -159,7 +159,7 @@ HiDESC eval 不是依赖任务 id，而是先从图像与文本摘要里算 `tas
 1. `text_guide_features` 仍然来自 text tower。
 2. 真正写入 `text_anchors`、也真正参与 eval 相似度计算的，不再是 raw pooled text feature，而是 `_extract_text_activation_index()` 产出的频域化 text descriptor。
 
-对应实现见 [llava_arch.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py>) 与新增的 [relation_text_utils.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/relation_text_utils.py>)。
+对应实现见 [llava_arch.py](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py>) 与新增的 [relation_text_utils.py](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/relation_text_utils.py>)。
 
 ### 3.1.1 text prototype 的最新聚合方式
 
@@ -208,11 +208,11 @@ HiDESC eval 不是依赖任务 id，而是先从图像与文本摘要里算 `tas
 - `\bar{z}_{txt}` 是当前 batch 的 mean activation index
 - `\delta = text_activation_ema_decay`，当前默认 `0.8`
 
-对应实现见 [relation_text_utils.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/relation_text_utils.py#14>) 与 [llava_arch.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#504>)。
+对应实现见 [relation_text_utils.py](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/relation_text_utils.py#14>) 与 [llava_arch.py](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py#504>)。
 
 ### 3.1.2 offline text/image anchor bank 的补充聚合
 
-如果走离线 prototype cache 链路，当前不是把每个 task 的均值直接塞回 checkpoint，而是会额外做一次 task-bank 级别的 refine，入口在 [analyze_hidesc_spectral_routing.py](</mnt/lyaa/MCITlib/scripts/analyze_hidesc_spectral_routing.py>) 与 [inject_hidesc_prototype_cache.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/scripts/MCITlib/inject_hidesc_prototype_cache.py>)。
+如果走离线 prototype cache 链路，当前不是把每个 task 的均值直接塞回 checkpoint，而是会额外做一次 task-bank 级别的 refine，入口在 [analyze_hidesc_spectral_routing.py](<__REPO_ROOT__/scripts/analyze_hidesc_spectral_routing.py>) 与 [inject_hidesc_prototype_cache.py](<__REPO_ROOT__/LLaVA/HiDESC/scripts/MCITlib/inject_hidesc_prototype_cache.py>)。
 
 离线 bank 的逻辑是：
 
@@ -243,7 +243,7 @@ HiDESC eval 不是依赖任务 id，而是先从图像与文本摘要里算 `tas
 
 ### 3.1.3 FFT image prototype 的计算
 
-HiDESC 不是用全局 image embedding 做视觉记忆，而是先把 patch grid 变成频域描述子。实现是 `_extract_image_spectral_descriptor()`，见 [llava_arch.py#342](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#342>)。
+HiDESC 不是用全局 image embedding 做视觉记忆，而是先把 patch grid 变成频域描述子。实现是 `_extract_image_spectral_descriptor()`，见 [llava_arch.py#342](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py#342>)。
 
 对 projector 后的 patch feature `X \in \mathbb{R}^{H \times W \times D}`，代码等价于：
 
@@ -263,7 +263,7 @@ HiDESC 不是用全局 image embedding 做视觉记忆，而是先把 patch grid
 - `spectral_low_bins = 4`
 - `spectral_high_bins = 4`
 
-见 [llava_arch.py#286](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#286>)。
+见 [llava_arch.py#286](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py#286>)。
 
 4. 对每个 bin 做平均池化，得到：
 
@@ -273,11 +273,11 @@ HiDESC 不是用全局 image embedding 做视觉记忆，而是先把 patch grid
 
 `z_{fft} = norm(0.55 norm(v^{mag}) + 0.25 norm(v^{real}) + 0.20 norm(v^{imag}))`
 
-对应代码见 [#405](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#405>) 到 [#413](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#413>)。
+对应代码见 [#405](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py#405>) 到 [#413](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py#413>)。
 
 ### 3.2 三阶段路由
 
-构造函数里的默认值写在 [llava_llama.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/language_model/llava_llama.py#110>)，当前 `UCIT` eval 主路径使用 prototype-only role gate 和 role-constrained late expert selection，核心配置是 [ucit_role_new_partition_eval_late_role_prototype_only.json](</mnt/lyaa/MCITlib/configs/routing_configs/HiDESC/ucit_role_new_partition_eval_late_role_prototype_only.json>)。
+构造函数里的默认值写在 [llava_llama.py](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/language_model/llava_llama.py#110>)，当前 `UCIT` eval 主路径使用 prototype-only role gate 和 role-constrained late expert selection，核心配置是 [ucit_role_new_partition_eval_late_role_prototype_only.json](<__REPO_ROOT__/configs/routing_configs/HiDESC/ucit_role_new_partition_eval_late_role_prototype_only.json>)。
 
 当前 eval 侧最关键的几个开关是：
 
@@ -316,7 +316,7 @@ HiDESC 不是用全局 image embedding 做视觉记忆，而是先把 patch grid
 
 只有 `candidate_experts` 这一步会把 `late_basis` 的 `argmax` 记下来作为最终候选 expert 列表，因此“late 更尖锐、更接近单专家”仍然成立，但它不再等价于旧版的硬 top-k 稀疏权重。
 
-代码里真正的层级切分由 `_get_layer_stage()` 完成，band 过渡则由 `stage1_band_schedule` 接管；更准确地说，当前实现是在 `route weights` 上做 band 内插值，而不是混输出 logits，见 [llava_arch.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1429>) 和 [llava_stage1_band_eval_schedule.json](</mnt/lyaa/MCITlib/configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json#1>)。
+代码里真正的层级切分由 `_get_layer_stage()` 完成，band 过渡则由 `stage1_band_schedule` 接管；更准确地说，当前实现是在 `route weights` 上做 band 内插值，而不是混输出 logits，见 [llava_arch.py](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py#1429>) 和 [llava_stage1_band_eval_schedule.json](<__REPO_ROOT__/configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json#1>)。
 
 ### 3.2.1 role 是如何划分的
 
@@ -332,9 +332,9 @@ role 不是外部标签，而是训练过程中根据 task anchors 逐步归纳�
 - `role_task_count`
 - `active_role_count`
 
-定义见 [llava_llama.py#71](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/language_model/llava_llama.py#71>) 到 [#109](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/language_model/llava_llama.py#109>)。
+定义见 [llava_llama.py#71](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/language_model/llava_llama.py#71>) 到 [#109](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/language_model/llava_llama.py#109>)。
 
-当一个 task 训练完成后，会调用 `finalize_current_task_role_memory()`，进而进入 `_finalize_current_task_role_memory_impl()`，见 [llava_llama.py#219](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/language_model/llava_llama.py#219>) 和 [llava_arch.py#1666](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1666>)。
+当一个 task 训练完成后，会调用 `finalize_current_task_role_memory()`，进而进入 `_finalize_current_task_role_memory_impl()`，见 [llava_llama.py#219](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/language_model/llava_llama.py#219>) 和 [llava_arch.py#1666](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py#1666>)。
 
 其逻辑可以概括为：
 
@@ -344,7 +344,7 @@ role 不是外部标签，而是训练过程中根据 task anchors 逐步归纳�
 4. 若没有 role 足够相似，则新建 role
 5. 否则把当前 task 软分配到 top-k role
 
-role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见 [llava_arch.py#855](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#855>)。默认策略是 `task_affinity_complete_link`，也就是：
+role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见 [llava_arch.py#855](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py#855>)。默认策略是 `task_affinity_complete_link`，也就是：
 
 `score(r, t) = \min_{j \in role(r)} sim(anchor_t, anchor_j)`
 
@@ -371,11 +371,11 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 
 所以论文口径里更稳妥的说法应是：role assignment 仍是 complete-link 风格的 image/text 双锚兼容性聚类，但实际阈值由具体 eval routing config 决定，而不是固定死在 checkpoint 里。
 
-另外，若是离线注入 prototype cache，注入脚本会先清空旧 role memory，再由 `ensure_role_bank_initialized()` 按新的 task anchors 在运行时重建 role prototypes、membership 与 `active_role_count`，见 [inject_hidesc_prototype_cache.py](</mnt/lyaa/MCITlib/LLaVA/HiDESC/scripts/MCITlib/inject_hidesc_prototype_cache.py>) 与 [llava_arch.py#1606](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1606>)。
+另外，若是离线注入 prototype cache，注入脚本会先清空旧 role memory，再由 `ensure_role_bank_initialized()` 按新的 task anchors 在运行时重建 role prototypes、membership 与 `active_role_count`，见 [inject_hidesc_prototype_cache.py](<__REPO_ROOT__/LLaVA/HiDESC/scripts/MCITlib/inject_hidesc_prototype_cache.py>) 与 [llava_arch.py#1606](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py#1606>)。
 
 ### 3.2.2 role prototype 如何更新
 
-当 task 被分配到某个 role 后，真正的 prototype 更新在 `_commit_task_to_roles()` 中完成，见 [llava_arch.py#1551](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1551>)。
+当 task 被分配到某个 role 后，真正的 prototype 更新在 `_commit_task_to_roles()` 中完成，见 [llava_arch.py#1551](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py#1551>)。
 
 若是新 role：
 
@@ -392,7 +392,7 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 - `w_{tr}` 是 task 对 role 的 membership weight
 - `n_r` 是 `role_task_count[r]`
 
-这正对应 [llava_arch.py#1564](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1564>) 到 [#1600](</mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py#1600>)。唯一需要更新的理解是：这里的 `task_text_anchor` 与 `role_text_prototype` 都已经处在 `activation index` 空间中。
+这正对应 [llava_arch.py#1564](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py#1564>) 到 [#1600](<__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py#1600>)。唯一需要更新的理解是：这里的 `task_text_anchor` 与 `role_text_prototype` 都已经处在 `activation index` 空间中。
 
 ### 3.3 stage1 band schedule
 
@@ -404,7 +404,7 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 - `b2_band = [29, 31]`
 - `late_core = [32, 32]`
 
-并且在 band 内预先给出离散 `alpha_by_layer`，例如 `15 -> 0.25`、`16/17 -> 0.5`、`18 -> 0.75`，见 [配置文件](</mnt/lyaa/MCITlib/configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json#1>)。
+并且在 band 内预先给出离散 `alpha_by_layer`，例如 `15 -> 0.25`、`16/17 -> 0.5`、`18 -> 0.75`，见 [配置文件](<__REPO_ROOT__/configs/routing_configs/HiDESC/llava_stage1_band_eval_schedule.json#1>)。
 
 这与代码中的 `_get_stage1_band_region()`、`_get_stage1_band_alpha()`、`_build_progressive_route_plan()` 是一致的。当前正确的实现表述应是：
 
@@ -418,7 +418,7 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 
 ### 4.1 实现口径
 
-分析脚本在 [stage1_analyze_boundaries.py](</mnt/lyaa/MCITlib/scripts/stage1_analyze_boundaries.py>)，它会对每层生成三条曲线：
+分析脚本在 [stage1_analyze_boundaries.py](<__REPO_ROOT__/scripts/stage1_analyze_boundaries.py>)，它会对每层生成三条曲线：
 
 1. `reasoning_signal`
 2. `objective_signal`
@@ -432,13 +432,13 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 - `b1_band_min_width = 3`
 - `b1_band_max_width = 5`
 
-对应代码见 [#486](</mnt/lyaa/MCITlib/scripts/stage1_analyze_boundaries.py#486>)。
+对应代码见 [#486](<__REPO_ROOT__/scripts/stage1_analyze_boundaries.py#486>)。
 
 ### 4.1.1 三个 signal 的正式公式
 
-这三个 signal 的真实实现来自 `compute_split_curves()`，见 [stage1_analyze_boundaries.py#902](</mnt/lyaa/MCITlib/scripts/stage1_analyze_boundaries.py#902>)。
+这三个 signal 的真实实现来自 `compute_split_curves()`，见 [stage1_analyze_boundaries.py#902](<__REPO_ROOT__/scripts/stage1_analyze_boundaries.py#902>)。
 
-`reasoning_signal` 与 `objective_signal` 都调用 `fisher_separation()`，见 [#267](</mnt/lyaa/MCITlib/scripts/stage1_analyze_boundaries.py#267>)。对某一层 `l`，其定义是：
+`reasoning_signal` 与 `objective_signal` 都调用 `fisher_separation()`，见 [#267](<__REPO_ROOT__/scripts/stage1_analyze_boundaries.py#267>)。对某一层 `l`，其定义是：
 
 `Signal(l) = \frac{\sum_c n_c ||\mu_c^{(l)} - \mu^{(l)}||_2^2}{\sum_c \sum_{i \in c} ||h_i^{(l)} - \mu_c^{(l)}||_2^2 + \epsilon}`
 
@@ -453,7 +453,7 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 - `reasoning_signal(l)` 是在 reasoning-family 样本上，用 `objective_label` 分组后的 Fisher separation
 - `objective_signal(l)` 是在 objective-family 样本上，用 `objective_label` 分组后的 Fisher separation
 
-`style_signal` 则来自 style-family 样本在同一 paired group 内的 JS divergence，见 [#945](</mnt/lyaa/MCITlib/scripts/stage1_analyze_boundaries.py#945>)。对同组不同模板的 style logits `u_i^{(l)}` 与 `u_j^{(l)}`：
+`style_signal` 则来自 style-family 样本在同一 paired group 内的 JS divergence，见 [#945](<__REPO_ROOT__/scripts/stage1_analyze_boundaries.py#945>)。对同组不同模板的 style logits `u_i^{(l)}` 与 `u_j^{(l)}`：
 
 `p_i^{(l)} = softmax(u_i^{(l)})`
 
@@ -470,7 +470,7 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 1. `min-max normalize`
 2. `window=3` 的 moving average smoothing
 
-见 [#637](</mnt/lyaa/MCITlib/scripts/stage1_analyze_boundaries.py#637>) 到 [#639](</mnt/lyaa/MCITlib/scripts/stage1_analyze_boundaries.py#639>)。
+见 [#637](<__REPO_ROOT__/scripts/stage1_analyze_boundaries.py#637>) 到 [#639](<__REPO_ROOT__/scripts/stage1_analyze_boundaries.py#639>)。
 
 然后对每个候选边界 `b1`，定义：
 
@@ -482,7 +482,7 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 
 `local\_score(b1) = min(pre\_margin, post\_margin) + boundary\_contrast + \lambda_{late}(b1-low)`
 
-其中 `k = transition_min_run`。对应代码见 [#651](</mnt/lyaa/MCITlib/scripts/stage1_analyze_boundaries.py#651>) 到 [#664](</mnt/lyaa/MCITlib/scripts/stage1_analyze_boundaries.py#664>)。
+其中 `k = transition_min_run`。对应代码见 [#651](<__REPO_ROOT__/scripts/stage1_analyze_boundaries.py#651>) 到 [#664](<__REPO_ROOT__/scripts/stage1_analyze_boundaries.py#664>)。
 
 ### 4.2 结论
 
@@ -492,7 +492,7 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 - 主共识区间是 `15-18`
 - 峰值支持在 `16`
 
-完整结果见 [stage1_b1_interval_report_20260811_zh.md](</mnt/lyaa/MCITlib/docs/stage1_b1_interval_report_20260811_zh.md>)。
+完整结果见 [stage1_b1_interval_report_20260811_zh.md](<__REPO_ROOT__/docs/stage1_b1_interval_report_20260811_zh.md>)。
 
 ### 4.3 对 HiDESC 的映射
 
@@ -510,7 +510,7 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 
 ### 5.1 实验逻辑
 
-最新 summary 明确把问题改写成“template drift 是否和 semantic instability 耦合”，见 [l_focus_logic_summary.md](</mnt/lyaa/MCITlib/docs/experiment2_l_focus_logic_full_20260806/l_focus_logic_summary.md>)。
+最新 summary 明确把问题改写成“template drift 是否和 semantic instability 耦合”，见 [l_focus_logic_summary.md](<__REPO_ROOT__/docs/experiment2_l_focus_logic_full_20260806/l_focus_logic_summary.md>)。
 
 结果显示：
 
@@ -550,10 +550,10 @@ role compatibility 的核心实现是 `_compute_role_pair_compatibility()`，见
 
 ## 8. 复现入口
 
-- 训练：[`LLaVA/HiDESC/scripts/MCITlib/Train/full_HiDESC_from_HiDeTask1.sh`](</mnt/lyaa/MCITlib/LLaVA/HiDESC/scripts/MCITlib/Train/full_HiDESC_from_HiDeTask1.sh>)
-- 离线 prototype 分析：[`scripts/analyze_hidesc_spectral_routing.py`](</mnt/lyaa/MCITlib/scripts/analyze_hidesc_spectral_routing.py>)
-- 离线 prototype 注入：[`LLaVA/HiDESC/scripts/MCITlib/inject_hidesc_prototype_cache.py`](</mnt/lyaa/MCITlib/LLaVA/HiDESC/scripts/MCITlib/inject_hidesc_prototype_cache.py>)
-- UCIT offline smoke eval：[`LLaVA/HiDESC/scripts/MCITlib/Eval_UCIT/run_offline_hidesc_ucit_smoke_eval.sh`](</mnt/lyaa/MCITlib/LLaVA/HiDESC/scripts/MCITlib/Eval_UCIT/run_offline_hidesc_ucit_smoke_eval.sh>)
-- UCIT offline full eval：[`LLaVA/HiDESC/scripts/MCITlib/Eval_UCIT/run_offline_hidesc_ucit_full_eval.sh`](</mnt/lyaa/MCITlib/LLaVA/HiDESC/scripts/MCITlib/Eval_UCIT/run_offline_hidesc_ucit_full_eval.sh>)
-- Stage 1：[`scripts/run_stage1_b1_multiseed.sh`](</mnt/lyaa/MCITlib/scripts/run_stage1_b1_multiseed.sh>)
-- `L_focus`：[`LLaVA/HiDe/scripts/MCITlib/Analysis/experiment2_prelim_parallel.sh`](</mnt/lyaa/MCITlib/LLaVA/HiDe/scripts/MCITlib/Analysis/experiment2_prelim_parallel.sh>)
+- 训练：[`LLaVA/HiDESC/scripts/MCITlib/Train/full_HiDESC_from_HiDeTask1.sh`](<__REPO_ROOT__/LLaVA/HiDESC/scripts/MCITlib/Train/full_HiDESC_from_HiDeTask1.sh>)
+- 离线 prototype 分析：[`scripts/analyze_hidesc_spectral_routing.py`](<__REPO_ROOT__/scripts/analyze_hidesc_spectral_routing.py>)
+- 离线 prototype 注入：[`LLaVA/HiDESC/scripts/MCITlib/inject_hidesc_prototype_cache.py`](<__REPO_ROOT__/LLaVA/HiDESC/scripts/MCITlib/inject_hidesc_prototype_cache.py>)
+- UCIT offline smoke eval：[`LLaVA/HiDESC/scripts/MCITlib/Eval_UCIT/run_offline_hidesc_ucit_smoke_eval.sh`](<__REPO_ROOT__/LLaVA/HiDESC/scripts/MCITlib/Eval_UCIT/run_offline_hidesc_ucit_smoke_eval.sh>)
+- UCIT offline full eval：[`LLaVA/HiDESC/scripts/MCITlib/Eval_UCIT/run_offline_hidesc_ucit_full_eval.sh`](<__REPO_ROOT__/LLaVA/HiDESC/scripts/MCITlib/Eval_UCIT/run_offline_hidesc_ucit_full_eval.sh>)
+- Stage 1：[`scripts/run_stage1_b1_multiseed.sh`](<__REPO_ROOT__/scripts/run_stage1_b1_multiseed.sh>)
+- `L_focus`：[`LLaVA/HiDe/scripts/MCITlib/Analysis/experiment2_prelim_parallel.sh`](<__REPO_ROOT__/LLaVA/HiDe/scripts/MCITlib/Analysis/experiment2_prelim_parallel.sh>)

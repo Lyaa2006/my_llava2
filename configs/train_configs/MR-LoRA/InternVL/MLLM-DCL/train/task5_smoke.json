@@ -1,8 +1,8 @@
 {
   "gpu_num": 4,
   "rank": 32,
-  "previous_model": "/mnt/lyaa/MCITlib/checkpoints/MLLM-DCL/InternVL/RegLoRA/smoke/Task4_internvl_lora",
-  "output_dir": "/mnt/lyaa/MCITlib/checkpoints/MLLM-DCL/InternVL/RegLoRA/smoke/Task5_internvl_lora",
+  "previous_model": "__REPO_ROOT__/checkpoints/MLLM-DCL/InternVL/RegLoRA/smoke/Task4_internvl_lora",
+  "output_dir": "__REPO_ROOT__/checkpoints/MLLM-DCL/InternVL/RegLoRA/smoke/Task5_internvl_lora",
   "epoch": 1,
   "batch_size": 4,
   "grad_acc": 1,

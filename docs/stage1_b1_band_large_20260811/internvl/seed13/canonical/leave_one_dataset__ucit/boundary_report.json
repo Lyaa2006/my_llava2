@@ -379,7 +379,7 @@
     "style_groups": 439
   },
   "artifacts": {
-    "report_path": "/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/internvl/seed13/canonical/leave_one_dataset__ucit/boundary_report.json"
+    "report_path": "__REPO_ROOT__/docs/stage1_b1_band_large_20260811/internvl/seed13/canonical/leave_one_dataset__ucit/boundary_report.json"
   },
   "search_window": {
     "b1_low": 10,

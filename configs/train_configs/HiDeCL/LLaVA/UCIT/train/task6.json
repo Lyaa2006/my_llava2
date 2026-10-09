@@ -2,8 +2,8 @@
   "gpu_num": 4,
   "rank": 96,
   "expert_num": 6,
-  "previous_model": "/mnt/lyaa/MCITlib/checkpoints/UCIT/LLaVA/HiDeCL_from_HiDeTask1_g4b8ga2/Task5_llava_lora",
-  "output_dir": "/mnt/lyaa/MCITlib/checkpoints/UCIT/LLaVA/HiDeCL_from_HiDeTask1_g4b8ga2/Task6_llava_lora",
+  "previous_model": "__REPO_ROOT__/checkpoints/UCIT/LLaVA/HiDeCL_from_HiDeTask1_g4b8ga2/Task5_llava_lora",
+  "output_dir": "__REPO_ROOT__/checkpoints/UCIT/LLaVA/HiDeCL_from_HiDeTask1_g4b8ga2/Task6_llava_lora",
   "epoch": 1,
   "batch_size": 2,
   "grad_acc": 8,
@@ -14,5 +14,5 @@
   "description_align_weight": 1.0,
   "description_utility_weight": 1.0,
   "standard_ce_weight": 1.0,
-  "description_cache_dir": "/mnt/lyaa/MCITlib/checkpoints/UCIT/LLaVA/HiDeCL_from_HiDeTask1_g4b8ga2/description_caches/task6_flickr30k"
+  "description_cache_dir": "__REPO_ROOT__/checkpoints/UCIT/LLaVA/HiDeCL_from_HiDeTask1_g4b8ga2/description_caches/task6_flickr30k"
 }

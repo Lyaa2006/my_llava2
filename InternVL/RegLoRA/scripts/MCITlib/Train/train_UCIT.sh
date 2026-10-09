@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-HARD_PATH=${HARD_PATH:-/mnt/lyaa/MCITlib}
+HARD_PATH=${HARD_PATH:-__REPO_ROOT__}
 DATA_CONFIG_DIR=${DATA_CONFIG_DIR:-$HARD_PATH/configs/data_configs/UCIT}
 TRAIN_CONFIG_ROOT=${TRAIN_CONFIG_ROOT:-$HARD_PATH/configs/train_configs/RegLoRA/InternVL/UCIT}
 DATA_SUFFIX=${DATA_SUFFIX:-}

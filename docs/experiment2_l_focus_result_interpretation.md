@@ -12,7 +12,7 @@
 2. 真正有害的漂移，不是“更新幅度大”本身，而是会污染这套语义坐标系的 `template-driven drift`。
 3. 因此需要 `L_focus` 去抑制模板词上的无意义扩散更新，把更新尽量限制在有语义价值的位置上。
 
-这也是 [docs/experiment2_l_focus_description_drift.md](/mnt/lyaa/MCITlib/docs/experiment2_l_focus_description_drift.md) 想验证的核心命题。
+这也是 [docs/experiment2_l_focus_description_drift.md](__REPO_ROOT__/docs/experiment2_l_focus_description_drift.md) 想验证的核心命题。
 
 ## 2. 为什么旧版论据不够稳
 
@@ -30,7 +30,7 @@
 3. `Task 4`: `focus_ratio = 1.050`
 4. `Task 6`: `focus_ratio = 1.013`
 
-这些结果见 [docs/experiment2_prelim_ce_only/description_drift_report.json](/mnt/lyaa/MCITlib/docs/experiment2_prelim_ce_only/description_drift_report.json)。
+这些结果见 [docs/experiment2_prelim_ce_only/description_drift_report.json](__REPO_ROOT__/docs/experiment2_prelim_ce_only/description_drift_report.json)。
 
 这意味着我们不能再把论证重点放在“谁漂得更大”上，而应该改问：
 
@@ -82,11 +82,11 @@
 
 目前最新的完整结果目录是：
 
-1. [docs/experiment2_l_focus_logic_full_20260806/](/mnt/lyaa/MCITlib/docs/experiment2_l_focus_logic_full_20260806/)
+1. [docs/experiment2_l_focus_logic_full_20260806/](__REPO_ROOT__/docs/experiment2_l_focus_logic_full_20260806/)
 
 主结论写在：
 
-1. [l_focus_logic_summary.md](/mnt/lyaa/MCITlib/docs/experiment2_l_focus_logic_full_20260806/l_focus_logic_summary.md)
+1. [l_focus_logic_summary.md](__REPO_ROOT__/docs/experiment2_l_focus_logic_full_20260806/l_focus_logic_summary.md)
 
 这份 summary 已经把评价口径从“谁漂得更大”切换成了“template drift 是否和 semantic instability 耦合”，因此它和新的实验目标是一致的。
 

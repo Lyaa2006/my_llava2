@@ -17,8 +17,8 @@ This is strong enough for a stage-1 paper claim of "stable interval with residua
 This round only targets `b1`.
 
 - `b2` workflow was left unchanged.
-- `b1` uses a dedicated runner: [scripts/run_stage1_b1_results.sh](/mnt/lyaa/MCITlib/scripts/run_stage1_b1_results.sh)
-- Multi-seed launch is handled by: [scripts/run_stage1_b1_multiseed.sh](/mnt/lyaa/MCITlib/scripts/run_stage1_b1_multiseed.sh)
+- `b1` uses a dedicated runner: [scripts/run_stage1_b1_results.sh](__REPO_ROOT__/scripts/run_stage1_b1_results.sh)
+- Multi-seed launch is handled by: [scripts/run_stage1_b1_multiseed.sh](__REPO_ROOT__/scripts/run_stage1_b1_multiseed.sh)
 
 The key change is that `b1` is no longer treated as a single best point. Instead, the analyzer returns a `3-5` layer band around the best crossover region.
 
@@ -47,12 +47,12 @@ The final large run used six seeds:
 
 The corresponding results are under:
 
-- [seed7](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed7/canonical/stage1_boundary_summary.json)
-- [seed13](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed13/canonical/stage1_boundary_summary.json)
-- [seed21](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed21/canonical/stage1_boundary_summary.json)
-- [seed29](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed29/canonical/stage1_boundary_summary.json)
-- [seed35](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed35/canonical/stage1_boundary_summary.json)
-- [seed42](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed42/canonical/stage1_boundary_summary.json)
+- [seed7](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed7/canonical/stage1_boundary_summary.json)
+- [seed13](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed13/canonical/stage1_boundary_summary.json)
+- [seed21](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed21/canonical/stage1_boundary_summary.json)
+- [seed29](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed29/canonical/stage1_boundary_summary.json)
+- [seed35](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed35/canonical/stage1_boundary_summary.json)
+- [seed42](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed42/canonical/stage1_boundary_summary.json)
 
 The large-scale launcher used cache prewarming from prior `b1` runs whenever matching sample caches were already present. This helps same-seed reanalysis a lot; for new seeds, reuse is partial because sample identities do change with the seed.
 
@@ -64,7 +64,7 @@ If a candidate `b1` band only appears under one seed, it may be a sampling artif
 
 ## Metric Definition
 
-The implementation is in [scripts/stage1_analyze_boundaries.py](/mnt/lyaa/MCITlib/scripts/stage1_analyze_boundaries.py).
+The implementation is in [scripts/stage1_analyze_boundaries.py](__REPO_ROOT__/scripts/stage1_analyze_boundaries.py).
 
 ### Stage Signals
 

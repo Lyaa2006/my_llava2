@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-HARD_PATH=/mnt/haiyangguo/mywork/CL-MLLM/MCITlib_video
+HARD_PATH=__SHARED_ROOT__/mywork/CL-MLLM/MCITlib_video
 
 bash scripts/MCITlib/Train/Task1.sh \
    $HARD_PATH/configs/model_configs/videollava.json \

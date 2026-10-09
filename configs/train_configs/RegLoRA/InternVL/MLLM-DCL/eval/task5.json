@@ -1,6 +1,6 @@
 {
   "gpu_num": 4,
   "stage": "RegLoRA-task5",
-  "model_path": "/mnt/lyaa/MCITlib/checkpoints/MLLM-DCL/InternVL/RegLoRA/Task5_internvl_lora",
+  "model_path": "__REPO_ROOT__/checkpoints/MLLM-DCL/InternVL/RegLoRA/Task5_internvl_lora",
   "result_path": "./results/DCL/each_dataset"
 }

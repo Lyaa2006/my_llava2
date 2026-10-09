@@ -4,7 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-DEFAULT_ENV_PY="/home/lyaa/miniconda3/envs/MCITlib_copy/bin/python"
+DEFAULT_ENV_PY="__ENV_ROOT__/bin/python"
 if [[ -z "${PYTHON_BIN:-}" ]]; then
   if [[ -x "$DEFAULT_ENV_PY" ]]; then
     PYTHON_BIN="$DEFAULT_ENV_PY"

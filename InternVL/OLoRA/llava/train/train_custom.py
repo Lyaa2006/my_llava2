@@ -1038,7 +1038,7 @@ def train(attn_implementation=None):
                     if training_args.bf16 and module.weight.dtype == torch.float32:
                         module = module.to(torch.bfloat16)
 
-    tcs_loader = TCSLoader('~/petreloss.conf') if has_tcs_loader else None
+    tcs_loader = TCSLoader('__HOME_ROOT__/petreloss.conf') if has_tcs_loader else None
     data_module = make_supervised_data_module(tokenizer=tokenizer,
                                               data_args=data_args,
                                               tcs_loader=tcs_loader)

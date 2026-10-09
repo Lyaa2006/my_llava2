@@ -72,7 +72,7 @@ b1_window = [b1_low, b1_high]
 
 ### 3.2 使用的三条信号
 
-实现位于 [scripts/stage1_analyze_boundaries.py](/mnt/lyaa/MCITlib/scripts/stage1_analyze_boundaries.py)。
+实现位于 [scripts/stage1_analyze_boundaries.py](__REPO_ROOT__/scripts/stage1_analyze_boundaries.py)。
 
 对每个 split，分析器都会计算三条逐层曲线：
 
@@ -171,11 +171,11 @@ boundary_windows.b1 = [low, high]
 
 正式多 seed 运行入口是：
 
-- [scripts/run_stage1_b1_multiseed.sh](/mnt/lyaa/MCITlib/scripts/run_stage1_b1_multiseed.sh)
+- [scripts/run_stage1_b1_multiseed.sh](__REPO_ROOT__/scripts/run_stage1_b1_multiseed.sh)
 
 结果汇总文档见：
 
-- [docs/stage1_b1_interval_report_20260811_zh.md](/mnt/lyaa/MCITlib/docs/stage1_b1_interval_report_20260811_zh.md)
+- [docs/stage1_b1_interval_report_20260811_zh.md](__REPO_ROOT__/docs/stage1_b1_interval_report_20260811_zh.md)
 
 ### 4.2 使用的 seed
 
@@ -190,12 +190,12 @@ boundary_windows.b1 = [low, high]
 
 对应结果见：
 
-- [seed7](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed7/canonical/stage1_boundary_summary.json)
-- [seed13](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed13/canonical/stage1_boundary_summary.json)
-- [seed21](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed21/canonical/stage1_boundary_summary.json)
-- [seed29](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed29/canonical/stage1_boundary_summary.json)
-- [seed35](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed35/canonical/stage1_boundary_summary.json)
-- [seed42](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/llava/seed42/canonical/stage1_boundary_summary.json)
+- [seed7](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed7/canonical/stage1_boundary_summary.json)
+- [seed13](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed13/canonical/stage1_boundary_summary.json)
+- [seed21](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed21/canonical/stage1_boundary_summary.json)
+- [seed29](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed29/canonical/stage1_boundary_summary.json)
+- [seed35](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed35/canonical/stage1_boundary_summary.json)
+- [seed42](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/llava/seed42/canonical/stage1_boundary_summary.json)
 
 ### 4.3 结果概括
 
@@ -271,7 +271,7 @@ expanded_style_vocab_js
 
 原始说明见：
 
-- [docs/stage1_b2_style_metric_conclusion.md](/mnt/lyaa/MCITlib/docs/stage1_b2_style_metric_conclusion.md)
+- [docs/stage1_b2_style_metric_conclusion.md](__REPO_ROOT__/docs/stage1_b2_style_metric_conclusion.md)
 
 style family 通过以下变体构造：
 
@@ -336,7 +336,7 @@ style_aggregation = cluster_balanced
 
 实现位于：
 
-- [scripts/stage1_analyze_boundaries.py](/mnt/lyaa/MCITlib/scripts/stage1_analyze_boundaries.py)
+- [scripts/stage1_analyze_boundaries.py](__REPO_ROOT__/scripts/stage1_analyze_boundaries.py)
 
 ## 6. `b2` 的实验配置与结果
 
@@ -359,10 +359,10 @@ style_aggregation = cluster_balanced
 
 最新稳定性验证使用了以下结果：
 
-- [seed7](/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/llava/seed7/canonical/stage1_boundary_summary.json)
-- [seed13](/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/llava/seed13/canonical/stage1_boundary_summary.json)
-- [seed21](/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/llava/seed21/canonical/stage1_boundary_summary.json)
-- [validonly_tiny seed7](/mnt/lyaa/MCITlib/docs/stage1_b1_validonly_tiny_cluster_balanced/llava/seed7/canonical/stage1_boundary_summary.json)
+- [seed7](__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/llava/seed7/canonical/stage1_boundary_summary.json)
+- [seed13](__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/llava/seed13/canonical/stage1_boundary_summary.json)
+- [seed21](__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/llava/seed21/canonical/stage1_boundary_summary.json)
+- [validonly_tiny seed7](__REPO_ROOT__/docs/stage1_b1_validonly_tiny_cluster_balanced/llava/seed7/canonical/stage1_boundary_summary.json)
 
 这里前三个 seed 是主证据，`validonly_tiny` 主要起到“原本跑偏场景是否被纠正”的补充验证作用。
 
@@ -495,27 +495,27 @@ b1 / b2 都由同一种联合边界指标直接给出
 
 `b1` 大规模多 seed：
 
-- [scripts/run_stage1_b1_multiseed.sh](/mnt/lyaa/MCITlib/scripts/run_stage1_b1_multiseed.sh)
+- [scripts/run_stage1_b1_multiseed.sh](__REPO_ROOT__/scripts/run_stage1_b1_multiseed.sh)
 
 `b1` 主 runner：
 
-- [scripts/run_stage1_b1_results.sh](/mnt/lyaa/MCITlib/scripts/run_stage1_b1_results.sh)
+- [scripts/run_stage1_b1_results.sh](__REPO_ROOT__/scripts/run_stage1_b1_results.sh)
 
 `b2 / style` 分析核心：
 
-- [scripts/stage1_analyze_boundaries.py](/mnt/lyaa/MCITlib/scripts/stage1_analyze_boundaries.py)
+- [scripts/stage1_analyze_boundaries.py](__REPO_ROOT__/scripts/stage1_analyze_boundaries.py)
 
 canonical pool 构造：
 
-- [scripts/stage1_build_canonical_pool.py](/mnt/lyaa/MCITlib/scripts/stage1_build_canonical_pool.py)
+- [scripts/stage1_build_canonical_pool.py](__REPO_ROOT__/scripts/stage1_build_canonical_pool.py)
 
 原始 `b2` 小规模文档：
 
-- [docs/stage1_b2_style_metric_conclusion.md](/mnt/lyaa/MCITlib/docs/stage1_b2_style_metric_conclusion.md)
+- [docs/stage1_b2_style_metric_conclusion.md](__REPO_ROOT__/docs/stage1_b2_style_metric_conclusion.md)
 
 最新 `b1` 区间文档：
 
-- [docs/stage1_b1_interval_report_20260811_zh.md](/mnt/lyaa/MCITlib/docs/stage1_b1_interval_report_20260811_zh.md)
+- [docs/stage1_b1_interval_report_20260811_zh.md](__REPO_ROOT__/docs/stage1_b1_interval_report_20260811_zh.md)
 
 ## 11. InternVL 对照结果：当前 `b1 / b2` 区间
 
@@ -546,22 +546,22 @@ canonical pool 构造：
 
 对应结果见：
 
-- [seed7](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/internvl/seed7/canonical/stage1_boundary_summary.json)
-- [seed13](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/internvl/seed13/canonical/stage1_boundary_summary.json)
-- [seed21](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/internvl/seed21/canonical/stage1_boundary_summary.json)
-- [seed29](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/internvl/seed29/canonical/stage1_boundary_summary.json)
-- [seed35](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/internvl/seed35/canonical/stage1_boundary_summary.json)
+- [seed7](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/internvl/seed7/canonical/stage1_boundary_summary.json)
+- [seed13](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/internvl/seed13/canonical/stage1_boundary_summary.json)
+- [seed21](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/internvl/seed21/canonical/stage1_boundary_summary.json)
+- [seed29](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/internvl/seed29/canonical/stage1_boundary_summary.json)
+- [seed35](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/internvl/seed35/canonical/stage1_boundary_summary.json)
 
 `seed42` 未完成。中断原因不是指标失效，而是磁盘写满，日志见：
 
-- [seed42.log](/mnt/lyaa/MCITlib/docs/stage1_b1_band_large_20260811/internvl/logs/seed42.log)
+- [seed42.log](__REPO_ROOT__/docs/stage1_b1_band_large_20260811/internvl/logs/seed42.log)
 
 因此，下面的 `InternVL b1` 区间结论是基于当前已经完成的 `5` 个 seed，而不是完整 `6` 个 seed。
 
 `InternVL b2` 则已在同一天按与 `LLaVA` 一致的 `cluster_balanced + leave_one_dataset_out + ACL/UCIT late-style overlap` 口径完成两条正式复跑：
 
-- [seed17 b2 canonical summary](/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed17/canonical/stage1_boundary_summary.json)
-- [seed27 b2 canonical summary](/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/stage1_boundary_summary.json)
+- [seed17 b2 canonical summary](__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed17/canonical/stage1_boundary_summary.json)
+- [seed27 b2 canonical summary](__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/stage1_boundary_summary.json)
 
 因此，当前文档中关于 `InternVL b2` 的结论统一以这两条正式复跑为准，不再沿用此前那些临时的、未完全收敛的占位说法。
 

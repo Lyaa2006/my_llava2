@@ -53,11 +53,11 @@ global image feature -> image_anchor similarity
 
 主要代码位置：
 
-- [llava_arch.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py)
-- [clip_encoder.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/multimodal_encoder/clip_encoder.py)
-- [llava_llama.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/language_model/llava_llama.py)
-- [train_MOE.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/train/train_MOE.py)
-- [clitmoelora.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/HiDESC/peft/tuners/clitmoelora.py)
+- [llava_arch.py](__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py)
+- [clip_encoder.py](__REPO_ROOT__/LLaVA/HiDESC/llava/model/multimodal_encoder/clip_encoder.py)
+- [llava_llama.py](__REPO_ROOT__/LLaVA/HiDESC/llava/model/language_model/llava_llama.py)
+- [train_MOE.py](__REPO_ROOT__/LLaVA/HiDESC/llava/train/train_MOE.py)
+- [clitmoelora.py](__REPO_ROOT__/LLaVA/HiDESC/HiDESC/peft/tuners/clitmoelora.py)
 
 当前 image/text guide feature：
 
@@ -121,7 +121,7 @@ P_raw_grid:
 
 ### 3.2 patch token 的来源要求
 
-当前 [clip_encoder.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/multimodal_encoder/clip_encoder.py:30) 的 `feature_select()` 默认返回配置指定层的 patch token，而 `clip_image_features` 来自 CLIP 最终 image projection。
+当前 [clip_encoder.py](__REPO_ROOT__/LLaVA/HiDESC/llava/model/multimodal_encoder/clip_encoder.py:30) 的 `feature_select()` 默认返回配置指定层的 patch token，而 `clip_image_features` 来自 CLIP 最终 image projection。
 
 不要因为维度相同，就直接把任意中间层 patch token 送入最终层 `visual_projection`。默认实现应满足以下二选一：
 
@@ -414,7 +414,7 @@ task_scores:
 
 ### 6.4 Batch 处理要求
 
-当前代码在 [llava_arch.py](/mnt/lyaa/MCITlib/LLaVA/HiDESC/llava/model/llava_arch.py:343) 使用 `max(dim=0)` 合并 batch 内 image/text score。
+当前代码在 [llava_arch.py](__REPO_ROOT__/LLaVA/HiDESC/llava/model/llava_arch.py:343) 使用 `max(dim=0)` 合并 batch 内 image/text score。
 
 spectral routing 接入时必须改为逐样本 route：
 

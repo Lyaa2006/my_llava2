@@ -2,7 +2,7 @@
 
 ## 1. 这个实验现在要证明什么
 
-在 [docs/proposal_patch.md](/mnt/lyaa/MCITlib/docs/proposal_patch.md) 的新方案里，显式的 `deep / middle / shallow` 架构已经被取消，但 `L_focus` 被保留了，而且仍然只作用在固定的 `description layer` 上。
+在 [docs/proposal_patch.md](__REPO_ROOT__/docs/proposal_patch.md) 的新方案里，显式的 `deep / middle / shallow` 架构已经被取消，但 `L_focus` 被保留了，而且仍然只作用在固定的 `description layer` 上。
 
 因此，这个前置实验不应该再去证明“某一层更像中层，所以需要 `L_focus`”，而应该直接证明下面这条更本质的理论依据：
 
@@ -17,7 +17,7 @@
 1. `key token drift > template token drift`
 2. `focus ratio = template / key < 1`
 
-但这条叙事本身不够稳。现有 `ce-only` 预实验结果里，若只看 drift 均值，很多 task 的 `key_mean` 和 `template_mean` 已经非常接近，例如 [docs/experiment2_prelim_ce_only/description_drift_report.json](/mnt/lyaa/MCITlib/docs/experiment2_prelim_ce_only/description_drift_report.json) 中 `Task 1` 的 `focus_ratio` 约为 `1.012`，`Task 2` 约为 `1.010`。
+但这条叙事本身不够稳。现有 `ce-only` 预实验结果里，若只看 drift 均值，很多 task 的 `key_mean` 和 `template_mean` 已经非常接近，例如 [docs/experiment2_prelim_ce_only/description_drift_report.json](__REPO_ROOT__/docs/experiment2_prelim_ce_only/description_drift_report.json) 中 `Task 1` 的 `focus_ratio` 约为 `1.012`，`Task 2` 约为 `1.010`。
 
 这说明仅凭“谁漂得更大”很难构成一个稳健论据。更合适的问题是：
 
@@ -125,14 +125,14 @@ Phase A 支持 `L_focus` 的条件不是“key drift 一定更大”，而是下
 你们已经有两套现成脚本可复用：
 
 1. drift 分析：
-   [analyze_description_drift.py](/mnt/lyaa/MCITlib/LLaVA/HiDe/scripts/MCITlib/Analysis/analyze_description_drift.py)
+   [analyze_description_drift.py](__REPO_ROOT__/LLaVA/HiDe/scripts/MCITlib/Analysis/analyze_description_drift.py)
 2. cross-template 对齐分析：
-   [analyze_template_alignment.py](/mnt/lyaa/MCITlib/LLaVA/HiDe/scripts/MCITlib/Analysis/analyze_template_alignment.py)
+   [analyze_template_alignment.py](__REPO_ROOT__/LLaVA/HiDe/scripts/MCITlib/Analysis/analyze_template_alignment.py)
 
 已有并行入口：
 
-1. [experiment2_prelim_parallel.sh](/mnt/lyaa/MCITlib/LLaVA/HiDe/scripts/MCITlib/Analysis/experiment2_prelim_parallel.sh)
-2. [experiment2_template_alignment_parallel.sh](/mnt/lyaa/MCITlib/LLaVA/HiDe/scripts/MCITlib/Analysis/experiment2_template_alignment_parallel.sh)
+1. [experiment2_prelim_parallel.sh](__REPO_ROOT__/LLaVA/HiDe/scripts/MCITlib/Analysis/experiment2_prelim_parallel.sh)
+2. [experiment2_template_alignment_parallel.sh](__REPO_ROOT__/LLaVA/HiDe/scripts/MCITlib/Analysis/experiment2_template_alignment_parallel.sh)
 
 所以 Phase A 基本不需要新训练，主要是把现有两个分析口径统一成同一套结论。
 

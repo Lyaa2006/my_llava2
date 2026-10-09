@@ -13,8 +13,8 @@ MODEL_CONFIG=$1
 DATA_CONFIG=$2
 TRAIN_CONFIG=$3
 
-PYTHON_BIN="${PYTHON_BIN:-/home/lyaa/miniconda3/envs/MCITlib_copy/bin/python}"
-TORCHRUN_BIN="${TORCHRUN_BIN:-/home/lyaa/miniconda3/envs/MCITlib_copy/bin/torchrun}"
+PYTHON_BIN="${PYTHON_BIN:-__ENV_ROOT__/bin/python}"
+TORCHRUN_BIN="${TORCHRUN_BIN:-__ENV_ROOT__/bin/torchrun}"
 
 if [[ ! -x "$PYTHON_BIN" ]]; then
     PYTHON_BIN="$(command -v python3)"

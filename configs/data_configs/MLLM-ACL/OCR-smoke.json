@@ -1,6 +1,6 @@
 {
-  "train_path": "/mnt/lyaa/MCITlib/configs/data_configs/MLLM-ACL/OCR-train-smoke.json",
-  "test_path": "/mnt/lyaa/MCITlib/configs/data_configs/MLLM-ACL/OCR-test-smoke.json",
-  "train_folder": "/mnt/lyaa/MCITlib/MLLM/ability/OCR",
-  "test_folder": "/mnt/lyaa/MCITlib/MLLM/ability/OCR_test"
+  "train_path": "__REPO_ROOT__/configs/data_configs/MLLM-ACL/OCR-train-smoke.json",
+  "test_path": "__REPO_ROOT__/configs/data_configs/MLLM-ACL/OCR-test-smoke.json",
+  "train_folder": "__REPO_ROOT__/MLLM/ability/OCR",
+  "test_folder": "__REPO_ROOT__/MLLM/ability/OCR_test"
 }

@@ -178,11 +178,11 @@ def run_model_and_convert(model_path, cache_dir, video_dir, json_dir, output_dir
     convert_json_to_jsonl(subjective_files, output_dir)
 
 if __name__ == "__main__":
-    model_path = "/mnt/ShareDB_6TB/shiyichen2025/Video-LLaVA/Video-LLaVA-7B"
-    cache_dir = "/mnt/ShareDB_6TB/shiyichen2025/Video-LLaVA/.cache"
-    video_dir = "/mnt/ShareDB-3TB/syc/benchmark/MLVU/video"
-    json_dir = "/mnt/ShareDB-3TB/syc/benchmark/MLVU/json"
-    output_dir = "/mnt/ShareDB-3TB/syc/benchmark/MLVU/results"
+    model_path = "__SHARED_ROOT__/Video-LLaVA/Video-LLaVA-7B"
+    cache_dir = "__SHARED_ROOT__/Video-LLaVA/.cache"
+    video_dir = "__SHARED_ROOT__syc/benchmark/MLVU/video"
+    json_dir = "__SHARED_ROOT__syc/benchmark/MLVU/json"
+    output_dir = "__SHARED_ROOT__syc/benchmark/MLVU/results"
     subjective_files = ["8_sub_scene_results.json", "9_summary_results.json"]  # 主观题文件名
     device = "cuda:0"
 

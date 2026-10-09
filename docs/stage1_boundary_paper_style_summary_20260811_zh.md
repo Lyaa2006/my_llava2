@@ -20,8 +20,8 @@
 
 `InternVL` 的 `b2` 当前参考以下两条 `cluster_balanced` 复跑：
 
-- [seed17](/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed17/canonical/stage1_boundary_summary.json)
-- [seed27](/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/stage1_boundary_summary.json)
+- [seed17](__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed17/canonical/stage1_boundary_summary.json)
+- [seed27](__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed27/canonical/stage1_boundary_summary.json)
 
 从现有 summary 看，`b2_window=[27,29]` 更适合作为当前工程工作推荐值。
 

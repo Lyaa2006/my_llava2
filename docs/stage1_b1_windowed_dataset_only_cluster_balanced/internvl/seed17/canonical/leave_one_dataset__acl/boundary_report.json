@@ -381,7 +381,7 @@
     "style_groups": 266
   },
   "artifacts": {
-    "report_path": "/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed17/canonical/leave_one_dataset__acl/boundary_report.json"
+    "report_path": "__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed17/canonical/leave_one_dataset__acl/boundary_report.json"
   },
   "search_window": {
     "b1_low": 10,

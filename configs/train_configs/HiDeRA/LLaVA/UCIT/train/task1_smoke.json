@@ -2,7 +2,7 @@
   "gpu_num": 4,
   "rank": 96,
   "expert_num": 6,
-  "output_dir": "/mnt/lyaa/MCITlib/checkpoints/UCIT/LLaVA/HiDeRA/smoke/Task1_llava_lora",
+  "output_dir": "__REPO_ROOT__/checkpoints/UCIT/LLaVA/HiDeRA/smoke/Task1_llava_lora",
   "epoch": 1,
   "batch_size": 1,
   "grad_acc": 1,

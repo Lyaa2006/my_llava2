@@ -4,7 +4,7 @@
 # an unrelated active conda environment such as MCITlib_copy.
 COMMON_SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HIDESC_PROJECT_ROOT="${HIDESC_PROJECT_ROOT:-$(realpath "$COMMON_SCRIPT_DIR/../..")}"
-HIDESC_ENV_BIN="${HIDESC_ENV_BIN:-/home/lyaa/miniconda3/envs/MCITlib/bin}"
+HIDESC_ENV_BIN="${HIDESC_ENV_BIN:-__ENV_ROOT__/bin}"
 if [ ! -x "$HIDESC_ENV_BIN/python3" ]; then
     echo "Missing HiDESC Python environment: $HIDESC_ENV_BIN/python3" >&2
     return 1 2>/dev/null || exit 1

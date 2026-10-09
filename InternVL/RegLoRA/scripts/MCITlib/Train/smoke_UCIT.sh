@@ -12,7 +12,7 @@ export NCCL_IB_DISABLE=${NCCL_IB_DISABLE:-1}
 export NCCL_P2P_DISABLE=${NCCL_P2P_DISABLE:-1}
 export PYTHONPATH="$REPO_ROOT:${PYTHONPATH:-}"
 
-export HARD_PATH=${HARD_PATH:-/mnt/lyaa/MCITlib}
+export HARD_PATH=${HARD_PATH:-__REPO_ROOT__}
 export DATA_SUFFIX=${DATA_SUFFIX:--smoke}
 export DATA_CONFIG_DIR=${DATA_CONFIG_DIR:-$HARD_PATH/configs/data_configs/UCIT}
 export TRAIN_CONFIG_ROOT=${TRAIN_CONFIG_ROOT:-$HARD_PATH/configs/train_configs/RegLoRA/InternVL/UCIT_smoke}

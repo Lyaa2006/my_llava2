@@ -2,7 +2,7 @@
   "num_reports": 3,
   "reports": [
     {
-      "path": "/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed17/canonical/leave_one_dataset__acl/boundary_report.json",
+      "path": "__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed17/canonical/leave_one_dataset__acl/boundary_report.json",
       "model": "internvl",
       "dataset": "acl",
       "b1_low": 13,
@@ -11,7 +11,7 @@
       "b2_high": 17
     },
     {
-      "path": "/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed17/canonical/leave_one_dataset__dcl/boundary_report.json",
+      "path": "__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed17/canonical/leave_one_dataset__dcl/boundary_report.json",
       "model": "internvl",
       "dataset": "dcl",
       "b1_low": 17,
@@ -20,7 +20,7 @@
       "b2_high": 23
     },
     {
-      "path": "/mnt/lyaa/MCITlib/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed17/canonical/leave_one_dataset__ucit/boundary_report.json",
+      "path": "__REPO_ROOT__/docs/stage1_b1_windowed_dataset_only_cluster_balanced/internvl/seed17/canonical/leave_one_dataset__ucit/boundary_report.json",
       "model": "internvl",
       "dataset": "ucit",
       "b1_low": 14,

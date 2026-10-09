@@ -17,8 +17,8 @@ export NCCL_P2P_DISABLE="${NCCL_P2P_DISABLE:-1}"
 export MASTER_PORT="${MASTER_PORT:-9001}"
 
 if ! command -v torchrun >/dev/null 2>&1 \
-    && [ -x "/home/lyaa/miniconda3/envs/MCITlib/bin/torchrun" ]; then
-    export PATH="/home/lyaa/miniconda3/envs/MCITlib/bin:$PATH"
+    && [ -x "__ENV_ROOT__/bin/torchrun" ]; then
+    export PATH="__ENV_ROOT__/bin:$PATH"
 fi
 
 exec > >(tee -a "$RUN_LOG") 2>&1

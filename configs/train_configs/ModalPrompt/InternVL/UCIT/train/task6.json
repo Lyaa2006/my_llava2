@@ -1,7 +1,7 @@
 {
   "gpu_num": 4,
-  "previous_model": "/mnt/lyaa/MCITlib/checkpoints/UCIT/InternVL/ModalPrompt/Task5_internvl",
-  "output_dir": "/mnt/lyaa/MCITlib/checkpoints/UCIT/InternVL/ModalPrompt/Task6_internvl",
+  "previous_model": "__REPO_ROOT__/checkpoints/UCIT/InternVL/ModalPrompt/Task5_internvl",
+  "output_dir": "__REPO_ROOT__/checkpoints/UCIT/InternVL/ModalPrompt/Task6_internvl",
   "prefix_len": 10,
   "num_tasks": 6,
   "cur_task": 6,

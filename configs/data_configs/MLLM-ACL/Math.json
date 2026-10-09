@@ -1,6 +1,6 @@
 {
-  "train_path": "/mnt/lyaa/MCITlib/MLLM/ability/Math/train.json",
-  "test_path": "/mnt/lyaa/MCITlib/MLLM/ability/Math_test/test.json",
-  "train_folder": "/mnt/lyaa/MCITlib/MLLM/ability/Math",
-  "test_folder": "/mnt/lyaa/MCITlib/MLLM/ability/Math_test"
+  "train_path": "__REPO_ROOT__/MLLM/ability/Math/train.json",
+  "test_path": "__REPO_ROOT__/MLLM/ability/Math_test/test.json",
+  "train_folder": "__REPO_ROOT__/MLLM/ability/Math",
+  "test_folder": "__REPO_ROOT__/MLLM/ability/Math_test"
 }
