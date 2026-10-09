@@ -874,7 +874,7 @@ def train(attn_implementation=None):
                 task_type="CAUSAL_LM",
             )
         else:
-            sys.path.append('__PROJECT_ROOT__/Slim_Train')
+            sys.path.append('__EXTERNAL_ROOT__/Slim_Train')
             from CoIN.peft import PeftModel, TaskType, get_peft_model, CoINMOELoraConfig, WEIGHTS_NAME, set_peft_model_state_dict
             kwargs = { 
                 "task_embedding_dim": model_args.task_embedding_dim,

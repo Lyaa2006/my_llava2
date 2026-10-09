@@ -31,7 +31,7 @@ echo "Config root: $CONFIG_ROOT"
 echo "CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-unset}"
 echo "NCCL_IB_DISABLE: ${NCCL_IB_DISABLE:-unset}"
 echo "NCCL_P2P_DISABLE: ${NCCL_P2P_DISABLE:-unset}"
-export PATH="__ENV_COPY_ROOT__/bin:$PATH"
+export PATH="__EXTERNAL_ROOT__/bin:$PATH"
 echo "Python: $(command -v python3)"
 echo "Deepspeed: $(command -v deepspeed)"
 export HF_HUB_OFFLINE=1

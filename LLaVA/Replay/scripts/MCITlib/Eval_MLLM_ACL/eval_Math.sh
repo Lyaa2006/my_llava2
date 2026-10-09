@@ -76,7 +76,7 @@ echo "Eval math"
 python -m llava.eval.CoIN.eval_math \
     --result-file $RESULT_DIR/$STAGE/result.xlsx
 
-# __CACHE_ROOT__/miniconda3/envs/coin/bin/python -m llava.eval.LLaVA.CoIN.create_prompt \
+# __EXTERNAL_ROOT__/miniconda3/envs/coin/bin/python -m llava.eval.LLaVA.CoIN.create_prompt \
 #     --rule ./ETrain/Eval/LLaVA/CoIN/rule.json \
 #     --questions ./playground/Instructions_Original/ScienceQA/test.json \
 #     --results $output_file \

@@ -38,7 +38,7 @@ echo "CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
 echo "NCCL_IB_DISABLE=$NCCL_IB_DISABLE"
 echo "NCCL_P2P_DISABLE=$NCCL_P2P_DISABLE"
 
-HIDE_TASK1_SRC="__DATA_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task1_llava_lora"
+HIDE_TASK1_SRC="__EXTERNAL_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task1_llava_lora"
 TASK1_DST="$RUN_ROOT/Task1_llava_lora"
 
 if [ ! -d "$HIDE_TASK1_SRC" ]; then
@@ -98,7 +98,7 @@ for tid in range(1, 7):
         "stage": f"HiDESC-task{tid}-smoke-{run_id}",
         "model_path": os.path.join(run_root, f"Task{tid}_llava_lora"),
         "result_path": result_root,
-        "text_tower": "__DATA_ROOT__/my_llava/clip-vit-large-patch14-336",
+        "text_tower": "__EXTERNAL_ROOT__/my_llava/clip-vit-large-patch14-336",
         "num_task": 6,
     }
     with open(os.path.join(cfg_root, f"eval_task{tid}.json"), "w") as f:

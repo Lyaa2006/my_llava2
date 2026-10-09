@@ -88,7 +88,7 @@ python -m llava.eval.CoIN.convert_result_to_submission \
     --output_file "$RESULT_DIR/$STAGE/our_result_for_submission.tsv" \
     --question-file "$DATA_PATH"
 
-# __CACHE_ROOT__/miniconda3/envs/coin/bin/python -m llava.eval.LLaVA.CoIN.create_prompt \
+# __EXTERNAL_ROOT__/miniconda3/envs/coin/bin/python -m llava.eval.LLaVA.CoIN.create_prompt \
 #     --rule ./ETrain/Eval/LLaVA/CoIN/rule.json \
 #     --questions ./playground/Instructions_Original/ScienceQA/test.json \
 #     --results $output_file \

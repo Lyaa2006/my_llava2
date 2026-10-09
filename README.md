@@ -176,26 +176,16 @@ Note: Our experiment is conducted in a CUDA 11.8 environment, with most librarie
 
 ### Path placeholders / 路径占位符
 
-The repository keeps machine-specific paths anonymized. Before running code that uses one of these paths, replace the literal placeholder with the corresponding path on your machine. These tokens are plain text placeholders, not shell variables, and should be replaced consistently across the repository.
+The repository keeps machine-specific paths anonymized. Before running code that uses one of these paths, replace the literal placeholders with paths on your machine. These tokens are plain text placeholders, not shell variables, and should be replaced consistently across the repository.
 
 | Placeholder | Replace with | Typical use |
 |---|---|---|
 | `__REPO_ROOT__` | Absolute path to this cloned repository | Repository-local configs, scripts, and reports |
-| `__DATA_ROOT__` | Root directory containing datasets | Dataset and image/video paths |
-| `__MODEL_ROOT__` | Root directory containing downloaded model weights | Model and vision-tower paths |
-| `__HOME_ROOT__` | Your home directory | User-scoped files and caches |
-| `__ENV_ROOT__` | The active Conda environment directory | Python and `torchrun` executables |
-| `__ENV_COPY_ROOT__` | The alternate/legacy Conda environment directory, if used | Legacy training launchers |
-| `__RUNS_ROOT__` | Directory for experiment outputs and checkpoints | Run and checkpoint paths |
-| `__TMP_ROOT__` | Directory for temporary files | Temporary outputs and caches |
-| `__CACHE_ROOT__` | Shared cache root | Cluster cache paths |
-| `__HGY_SHARED_ROOT__` | The shared-storage root containing the referenced project files | Shared project dependencies |
-| `__SHAREDB_6TB_ROOT__` | The shared-storage root containing the referenced models/datasets | Shared model and dataset paths |
-| `__SHAREDB_3TB_ROOT__` | The shared-storage root containing the referenced video/evaluation files | Shared video and evaluation paths |
-| `__BUILD_ROOT__` | Build or package-work directory, when required by a dependency | Dependency-local file URLs |
-| `__PROJECT_ROOT__` | Root directory of the referenced auxiliary project | Auxiliary source checkout |
+| `__EXTERNAL_ROOT__` | A local root under which you keep datasets, models, environments, caches, and other external files | All machine-specific paths outside the repository |
 
-For example, if the repository is cloned to `/srv/HiDARC`, replace every `__REPO_ROOT__` with `/srv/HiDARC`; if datasets are stored under `/srv/datasets`, replace `__DATA_ROOT__` with `/srv/datasets`. Also update the public examples such as `/your_data_path` and `/your_model_path` to your local paths. After replacement, verify that no placeholders remain in the files used by your command.
+In most cases, you only need two batch replacements: `__REPO_ROOT__` → the cloned repository path and `__EXTERNAL_ROOT__` → the root of your local experiment storage. For example, if the repository is cloned to `/srv/HiDARC` and external files are organized under `/srv/experiments`, replace those two tokens globally. Also update the public examples such as `/your_data_path` and `/your_model_path` to your local paths. After replacement, verify that no placeholders remain in the files used by your command.
+
+The external paths preserve their relative suffixes. If your datasets, models, or environments are stored in separate unrelated roots, replace `__EXTERNAL_ROOT__` in batches by directory or config group instead of using one global replacement.
 
 ### 1. Clone this repository
 ```

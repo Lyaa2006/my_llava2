@@ -3,6 +3,6 @@
   "stage": "HiDeCL-task4",
   "model_path": "__REPO_ROOT__/checkpoints/UCIT/LLaVA/HiDeCL_from_HiDeTask1_g4b8ga2/Task4_llava_lora",
   "result_path": "__REPO_ROOT__/LLaVA/HiDeCL/results/UCIT/full_each_dataset_hidecl_from_hide_task1_g4b8ga2",
-  "text_tower": "__DATA_ROOT__/my_llava/clip-vit-large-patch14-336",
+  "text_tower": "__EXTERNAL_ROOT__/my_llava/clip-vit-large-patch14-336",
   "num_task": 6
 }

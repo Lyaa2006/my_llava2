@@ -2,7 +2,7 @@
   "gpu_num": 2,
   "rank": 96,
   "expert_num": 6,
-  "output_dir": "__RUNS_ROOT__/checkpoints/UCIT/LLaVA/HiDESC_from_task1_ce_main_g4/Task1_llava_lora",
+  "output_dir": "__EXTERNAL_ROOT__/checkpoints/UCIT/LLaVA/HiDESC_from_task1_ce_main_g4/Task1_llava_lora",
   "epoch": 1,
   "batch_size": 2,
   "grad_acc": 16,

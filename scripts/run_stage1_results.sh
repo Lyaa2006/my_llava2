@@ -4,7 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-DEFAULT_ENV_PY="__ENV_COPY_ROOT__/bin/python"
+DEFAULT_ENV_PY="__EXTERNAL_ROOT__/bin/python"
 if [[ -z "${PYTHON_BIN:-}" ]]; then
   if [[ -x "$DEFAULT_ENV_PY" ]]; then
     PYTHON_BIN="$DEFAULT_ENV_PY"
@@ -41,7 +41,7 @@ TRANSITION_MARGIN="${TRANSITION_MARGIN:-0.03}"
 TRANSITION_MIN_RUN="${TRANSITION_MIN_RUN:-3}"
 STYLE_AGGREGATION="${STYLE_AGGREGATION:-raw}"
 CACHE_DIR="${CACHE_DIR:-}"
-export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-__TMP_ROOT__/triton}"
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-__EXTERNAL_ROOT__/triton}"
 export STAGE1_MODEL_FAMILY="$MODEL_FAMILY"
 mkdir -p "$TRITON_CACHE_DIR"
 

@@ -2,7 +2,7 @@
   "gpu_num": 2,
   "rank": 96,
   "expert_num": 6,
-  "previous_model": "__DATA_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task5_llava_lora",
+  "previous_model": "__EXTERNAL_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task5_llava_lora",
   "output_dir": "__REPO_ROOT__/checkpoints/UCIT/LLaVA/HiDeCL/smoke/task6_from_hide_task5_2gpu",
   "epoch": 1,
   "batch_size": 1,

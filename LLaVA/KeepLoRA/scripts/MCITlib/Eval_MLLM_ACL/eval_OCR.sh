@@ -73,7 +73,7 @@ python -m llava.eval.CoIN.eval_ocr \
     --result-file $output_file \
     --output-dir $RESULT_DIR/$STAGE \
 
-# __CACHE_ROOT__/miniconda3/envs/coin/bin/python -m llava.eval.LLaVA.CoIN.create_prompt \
+# __EXTERNAL_ROOT__/miniconda3/envs/coin/bin/python -m llava.eval.LLaVA.CoIN.create_prompt \
 #     --rule ./ETrain/Eval/LLaVA/CoIN/rule.json \
 #     --questions ./playground/Instructions_Original/ScienceQA/test.json \
 #     --results $output_file \

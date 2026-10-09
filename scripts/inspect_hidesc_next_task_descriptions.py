@@ -42,36 +42,36 @@ DESCRIPTION_PROMPT = (
     "colors, textures, scene context, visible text, and spatial relations."
 )
 
-DEFAULT_BASE_MODEL = "__DATA_ROOT__/my_llava/llava-v1.5-7b"
-DEFAULT_VISION_TOWER = "__DATA_ROOT__/my_llava/clip-vit-large-patch14-336"
-DEFAULT_TEXT_TOWER = "__DATA_ROOT__/my_llava/clip-vit-large-patch14-336"
-DEFAULT_IMAGE_ROOT = "__DATA_ROOT__/my_llava/UCIT/datasets"
+DEFAULT_BASE_MODEL = "__EXTERNAL_ROOT__/my_llava/llava-v1.5-7b"
+DEFAULT_VISION_TOWER = "__EXTERNAL_ROOT__/my_llava/clip-vit-large-patch14-336"
+DEFAULT_TEXT_TOWER = "__EXTERNAL_ROOT__/my_llava/clip-vit-large-patch14-336"
+DEFAULT_IMAGE_ROOT = "__EXTERNAL_ROOT__/my_llava/UCIT/datasets"
 
 TRANSITIONS = [
     {
         "name": "Task1_to_Task2_ArxivQA",
-        "checkpoint": "__DATA_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task1_llava_lora",
-        "dataset": "__DATA_ROOT__/my_llava/UCIT/ArxivQA/train_4w.json",
+        "checkpoint": "__EXTERNAL_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task1_llava_lora",
+        "dataset": "__EXTERNAL_ROOT__/my_llava/UCIT/ArxivQA/train_4w.json",
     },
     {
         "name": "Task2_to_Task3_VizWiz",
-        "checkpoint": "__DATA_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task2_llava_lora",
-        "dataset": "__DATA_ROOT__/my_llava/UCIT/VizWiz/train.json",
+        "checkpoint": "__EXTERNAL_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task2_llava_lora",
+        "dataset": "__EXTERNAL_ROOT__/my_llava/UCIT/VizWiz/train.json",
     },
     {
         "name": "Task3_to_Task4_IconQA",
-        "checkpoint": "__DATA_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task3_llava_lora",
-        "dataset": "__DATA_ROOT__/my_llava/UCIT/IconQA/train.json",
+        "checkpoint": "__EXTERNAL_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task3_llava_lora",
+        "dataset": "__EXTERNAL_ROOT__/my_llava/UCIT/IconQA/train.json",
     },
     {
         "name": "Task4_to_Task5_CLEVR",
-        "checkpoint": "__DATA_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task4_llava_lora",
-        "dataset": "__DATA_ROOT__/my_llava/UCIT/CLEVR/train_4w.json",
+        "checkpoint": "__EXTERNAL_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task4_llava_lora",
+        "dataset": "__EXTERNAL_ROOT__/my_llava/UCIT/CLEVR/train_4w.json",
     },
     {
         "name": "Task5_to_Task6_Flickr30k",
-        "checkpoint": "__DATA_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task5_llava_lora",
-        "dataset": "__DATA_ROOT__/my_llava/UCIT/Flickr30k/train_brief_4w.json",
+        "checkpoint": "__EXTERNAL_ROOT__/my_llava/checkpoint/UCIT/LLaVA-1.5/HiDe/Task5_llava_lora",
+        "dataset": "__EXTERNAL_ROOT__/my_llava/UCIT/Flickr30k/train_brief_4w.json",
     },
 ]
 

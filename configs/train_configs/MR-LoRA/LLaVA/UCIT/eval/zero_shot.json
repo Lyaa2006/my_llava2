@@ -1,6 +1,6 @@
 {
   "gpu_num": 4,
   "stage": "zero-shot",
-  "model_path": "__DATA_ROOT__/my_llava/llava-v1.5-7b",
+  "model_path": "__EXTERNAL_ROOT__/my_llava/llava-v1.5-7b",
   "result_path": "./results/UCIT/each_dataset"
 }

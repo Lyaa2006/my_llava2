@@ -3,7 +3,7 @@
 set -euo pipefail
 
 HARD_PATH=${HARD_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../.." && pwd)}
-export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-__TMP_ROOT__/triton-cache/MR-LoRA}"
+export TRITON_CACHE_DIR="${TRITON_CACHE_DIR:-__EXTERNAL_ROOT__/triton-cache/MR-LoRA}"
 export TRITON_CACHE_PATH="$TRITON_CACHE_DIR"
 export HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}"
 export TRANSFORMERS_OFFLINE="${TRANSFORMERS_OFFLINE:-1}"

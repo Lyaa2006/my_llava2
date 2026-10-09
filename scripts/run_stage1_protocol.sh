@@ -4,7 +4,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-DEFAULT_ENV_PY="__ENV_COPY_ROOT__/bin/python"
+DEFAULT_ENV_PY="__EXTERNAL_ROOT__/bin/python"
 if [[ -z "${PYTHON_BIN:-}" ]]; then
   if [[ -x "$DEFAULT_ENV_PY" ]]; then
     PYTHON_BIN="$DEFAULT_ENV_PY"

@@ -1,7 +1,7 @@
 {
   "gpu_num": 2,
-  "previous_model": "__MODEL_ROOT__/MCITlib/checkpoints/UCIT/LLaVA/ModalPrompt/Task2_llava",
-  "output_dir": "__MODEL_ROOT__/MCITlib/checkpoints/UCIT/LLaVA/ModalPrompt/Task3_llava",
+  "previous_model": "__EXTERNAL_ROOT__/MCITlib/checkpoints/UCIT/LLaVA/ModalPrompt/Task2_llava",
+  "output_dir": "__EXTERNAL_ROOT__/MCITlib/checkpoints/UCIT/LLaVA/ModalPrompt/Task3_llava",
   "prefix_len": 10,
   "num_tasks": 6,
   "cur_task": 3,

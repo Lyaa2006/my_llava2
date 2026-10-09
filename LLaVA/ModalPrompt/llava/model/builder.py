@@ -99,7 +99,7 @@ def load_pretrained_model(model_path, model_base, model_name, prefix_len, cur_ta
             try:
                 mm_projector_weights = torch.load(os.path.join(model_base, 'mm_projector.bin'), map_location='cpu')
             except FileNotFoundError:
-                mm_projector_weights = torch.load('__SHAREDB_6TB_ROOT__/models/llava-v1.5-mlp2x-336px-pretrain-vicuna-7b-v1.5/mm_projector.bin', map_location='cpu')
+                mm_projector_weights = torch.load('__EXTERNAL_ROOT__/models/llava-v1.5-mlp2x-336px-pretrain-vicuna-7b-v1.5/mm_projector.bin', map_location='cpu')
             mm_projector_weights = {k: v.to(torch.float16) for k, v in mm_projector_weights.items()}
             model.load_state_dict(mm_projector_weights, strict=False)
 

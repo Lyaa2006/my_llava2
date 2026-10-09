@@ -33,44 +33,44 @@ UCIT_TASKS = [
     {
         "task_id": 0,
         "task_name": "ImageNet-R",
-        "train_path": "__DATA_ROOT__/my_llava/UCIT/ImageNet-R/train.json",
-        "test_path": "__DATA_ROOT__/my_llava/UCIT/ImageNet-R/test_3000.json",
-        "image_folder": "__DATA_ROOT__/my_llava/UCIT/datasets",
+        "train_path": "__EXTERNAL_ROOT__/my_llava/UCIT/ImageNet-R/train.json",
+        "test_path": "__EXTERNAL_ROOT__/my_llava/UCIT/ImageNet-R/test_3000.json",
+        "image_folder": "__EXTERNAL_ROOT__/my_llava/UCIT/datasets",
     },
     {
         "task_id": 1,
         "task_name": "ArxivQA",
-        "train_path": "__DATA_ROOT__/my_llava/UCIT/ArxivQA/train_4w.json",
-        "test_path": "__DATA_ROOT__/my_llava/UCIT/ArxivQA/test_3000.json",
-        "image_folder": "__DATA_ROOT__/my_llava/UCIT/datasets",
+        "train_path": "__EXTERNAL_ROOT__/my_llava/UCIT/ArxivQA/train_4w.json",
+        "test_path": "__EXTERNAL_ROOT__/my_llava/UCIT/ArxivQA/test_3000.json",
+        "image_folder": "__EXTERNAL_ROOT__/my_llava/UCIT/datasets",
     },
     {
         "task_id": 2,
         "task_name": "VizWiz",
-        "train_path": "__DATA_ROOT__/my_llava/UCIT/VizWiz/train.json",
-        "test_path": "__DATA_ROOT__/my_llava/UCIT/VizWiz/test_3000.json",
-        "image_folder": "__DATA_ROOT__/my_llava/UCIT/datasets",
+        "train_path": "__EXTERNAL_ROOT__/my_llava/UCIT/VizWiz/train.json",
+        "test_path": "__EXTERNAL_ROOT__/my_llava/UCIT/VizWiz/test_3000.json",
+        "image_folder": "__EXTERNAL_ROOT__/my_llava/UCIT/datasets",
     },
     {
         "task_id": 3,
         "task_name": "IconQA",
-        "train_path": "__DATA_ROOT__/my_llava/UCIT/IconQA/train.json",
-        "test_path": "__DATA_ROOT__/my_llava/UCIT/IconQA/test_3000.json",
-        "image_folder": "__DATA_ROOT__/my_llava/UCIT/datasets",
+        "train_path": "__EXTERNAL_ROOT__/my_llava/UCIT/IconQA/train.json",
+        "test_path": "__EXTERNAL_ROOT__/my_llava/UCIT/IconQA/test_3000.json",
+        "image_folder": "__EXTERNAL_ROOT__/my_llava/UCIT/datasets",
     },
     {
         "task_id": 4,
         "task_name": "CLEVR-Math",
-        "train_path": "__DATA_ROOT__/my_llava/UCIT/CLEVR/train_4w.json",
-        "test_path": "__DATA_ROOT__/my_llava/UCIT/CLEVR/test_3000.json",
-        "image_folder": "__DATA_ROOT__/my_llava/UCIT/datasets",
+        "train_path": "__EXTERNAL_ROOT__/my_llava/UCIT/CLEVR/train_4w.json",
+        "test_path": "__EXTERNAL_ROOT__/my_llava/UCIT/CLEVR/test_3000.json",
+        "image_folder": "__EXTERNAL_ROOT__/my_llava/UCIT/datasets",
     },
     {
         "task_id": 5,
         "task_name": "Flickr30k",
-        "train_path": "__DATA_ROOT__/my_llava/UCIT/Flickr30k/train_brief_4w.json",
-        "test_path": "__DATA_ROOT__/my_llava/UCIT/Flickr30k/test_3000.json",
-        "image_folder": "__DATA_ROOT__/my_llava/UCIT/datasets",
+        "train_path": "__EXTERNAL_ROOT__/my_llava/UCIT/Flickr30k/train_brief_4w.json",
+        "test_path": "__EXTERNAL_ROOT__/my_llava/UCIT/Flickr30k/test_3000.json",
+        "image_folder": "__EXTERNAL_ROOT__/my_llava/UCIT/datasets",
     },
 ]
 
@@ -150,11 +150,11 @@ def parse_args():
     )
     parser.add_argument(
         "--model-base",
-        default="__DATA_ROOT__/my_llava/llava-v1.5-7b",
+        default="__EXTERNAL_ROOT__/my_llava/llava-v1.5-7b",
     )
     parser.add_argument(
         "--text-tower",
-        default="__DATA_ROOT__/my_llava/clip-vit-large-patch14-336",
+        default="__EXTERNAL_ROOT__/my_llava/clip-vit-large-patch14-336",
     )
     parser.add_argument("--num-task", type=int, default=0)
     parser.add_argument("--conv-mode", default="llava_v1")

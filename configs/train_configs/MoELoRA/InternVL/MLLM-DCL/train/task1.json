@@ -2,7 +2,7 @@
   "gpu_num": 1,
   "rank": 35,
   "expert_num": 5,
-  "output_dir": "__HOME_ROOT__/MCITlib/checkpoints/MLLM-DCL/InternVL/MoELoRA/full/Task1_internvl_lora",
+  "output_dir": "__EXTERNAL_ROOT__/MCITlib/checkpoints/MLLM-DCL/InternVL/MoELoRA/full/Task1_internvl_lora",
   "epoch": 1,
   "batch_size": 4,
   "grad_acc": 4,
